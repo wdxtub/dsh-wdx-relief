@@ -1,0 +1,81 @@
+{
+  "name": "dsh-wdx-relief",
+  "version": "0.1.0",
+  "description": "Take the friction out of daily DSH work: predicted next messages in the composer, plus reply length, tone, and writing style controls.",
+  "type": "module",
+  "main": "index.js",
+  "exports": {
+    ".": "./index.js",
+    "./client": "./client/client.js",
+    "./package.json": "./package.json",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.png"
+  },
+  "files": [
+    "index.js",
+    "src",
+    "client",
+    "cordis.patch.yml",
+    "locale/*.json",
+    "icon.svg",
+    "icon.png",
+    "README.md",
+    "CHANGELOG.md",
+    "RELEASING.md",
+    "LICENSE",
+    "docs"
+  ],
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "inject": [
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-locale"
+      ],
+      "immediately": true
+    }
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "prepublishOnly": "npm test"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "^4.0.1",
+    "@deepseek-ai/schemastery": "^3.19.0"
+  },
+  "engines": {
+    "node": ">=22",
+    "dsh": ">=0.2.0"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "@deepseek-ai/schemastery": "3.19.0"
+  },
+  "author": "wdxtub",
+  "keywords": [
+    "dsh",
+    "deepseek-harness",
+    "plugin",
+    "prediction",
+    "reply-style",
+    "web-ui",
+    "productivity"
+  ],
+  "icon": "./icon.png",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/wdxtub/dsh-wdx-relief.git"
+  },
+  "homepage": "https://github.com/wdxtub/dsh-wdx-relief",
+  "bugs": {
+    "url": "https://github.com/wdxtub/dsh-wdx-relief/issues"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org/"
+  }
+}

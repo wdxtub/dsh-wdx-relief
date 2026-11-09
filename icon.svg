@@ -1,0 +1,32 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64" viewBox="0 0 64 64" role="img" aria-label="WDX Relief">
+  <defs>
+    <linearGradient id="bg" x1="8" y1="4" x2="56" y2="60" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#3b4048"/>
+      <stop offset="0.55" stop-color="#22262c"/>
+      <stop offset="1" stop-color="#101215"/>
+    </linearGradient>
+    <linearGradient id="fg" x1="18" y1="18" x2="44" y2="48" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#ffffff"/>
+      <stop offset="1" stop-color="#c9ced6"/>
+    </linearGradient>
+    <linearGradient id="spark" x1="47" y1="7" x2="59" y2="21" gradientUnits="userSpaceOnUse">
+      <stop offset="0" stop-color="#a9c7ff"/>
+      <stop offset="1" stop-color="#5b7cfa"/>
+    </linearGradient>
+  </defs>
+
+  <rect width="64" height="64" rx="16" fill="url(#bg)"/>
+  <circle cx="49" cy="14" r="12" fill="#ffffff" opacity="0.06"/>
+
+  <!-- reply bubble -->
+  <path d="M18 18H38A8 8 0 0 1 46 26V36A8 8 0 0 1 38 44H28L18 51V44A8 8 0 0 1 10 36V26A8 8 0 0 1 18 18Z"
+        fill="none" stroke="url(#fg)" stroke-width="3.4" stroke-linecap="round" stroke-linejoin="round"/>
+
+  <!-- written line + predicted ghost line + caret -->
+  <path d="M17 27H30" stroke="url(#fg)" stroke-width="3" stroke-linecap="round"/>
+  <path d="M17 35H35" stroke="#c9ced6" stroke-width="3" stroke-linecap="round" stroke-dasharray="3 4" opacity="0.65"/>
+  <path d="M40 31V39" stroke="url(#spark)" stroke-width="3" stroke-linecap="round"/>
+
+  <!-- AI spark -->
+  <path d="M53 6L55.6 10.4L60 13L55.6 15.6L53 20L50.4 15.6L46 13L50.4 10.4Z" fill="url(#spark)"/>
+</svg>
