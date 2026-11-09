@@ -67,6 +67,15 @@ const AXIS_LABELS = {
   headingsLists: '标题和列表',
 }
 
+const ACTIONABLE_LINES = [
+  '- 便于行动：开头直接给结果或最相关的下一步，不写「好的」「我来看看」之类铺垫；需要用户操作时，把命令、路径或决定放在显眼位置。',
+  '- 能一句话说清的，不写成一段；能一段说清的，不列成清单；多步操作用短编号列表，一步对应一个可完成动作；次要信息放后面。',
+  '- 不用复杂名词堆砌代替解释：必须使用术语时，先用一句白话说明它是什么、为什么重要。',
+  '- 重要细节、风险和失败条件不因精简而省略；出错时直接说症状、已知原因和下一步。',
+  '- 不复述用户已说过或上一轮结论；长任务或中断后，用一句话说明已完成什么、当前卡在哪里。',
+  '- 已获授权且工具可执行时直接完成，不把本可代办的工作交回用户；全部完成后自然结束。',
+]
+
 const MAX_CUSTOM_CHARS = 2000
 
 function read(config, field, fallback) {
@@ -93,6 +102,10 @@ export function buildStylePrompt(config) {
   const verbosity = oneOf(read(config, 'verbosity', 'low'), VERBOSITY_VALUES)
   if (verbosity !== undefined && verbosity !== 'model') {
     lines.push(`- ${VERBOSITY_LINES[verbosity]}`)
+  }
+
+  if (read(config, 'actionable', true) === true) {
+    lines.push(...ACTIONABLE_LINES)
   }
 
   const base = oneOf(read(config, 'baseStyle', 'default'), BASE_STYLE_VALUES)
@@ -127,6 +140,7 @@ export function buildStylePrompt(config) {
 /** 供测试与前端读取的选项常量。 */
 export const STYLE_DEFAULTS = {
   verbosity: 'low',
+  actionable: true,
   writingStyle: false,
   baseStyle: 'default',
   friendliness: 'default',

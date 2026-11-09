@@ -26,6 +26,7 @@ dsh plugin --profile web add link:/path/to/dsh-wdx-relief
 |---|---|---|
 | `enabled` | `true` | 输入框预测开关 |
 | `verbosity` | `low` | `model` / `low` / `medium` / `high` |
+| `actionable` | `true` | 便于行动：先结果/下一步、白话解释术语、保留风险 |
 | `writingStyle` | `false` | 参考当前对话的写作风格 |
 | `baseStyle` | `default` | 7 个基础风格预设之一 |
 | `friendliness` | `default` | `default` / `enhanced` / `reduced` |
@@ -69,6 +70,10 @@ Host 在 `ctx.systemPrompt` 注册：
 
 `buildStylePrompt` 只输出非默认项，并加一段“只影响表达方式”的前缀。自定义指令最多 2000 字；
 `interpolate: false` 让其中的 `{{...}}` 保持字面量，避免 prompt 装配报错。
+
+「便于行动」规则改编自 `agent-configs-skills/skills/i-have-adhd`（MIT）：开头给结果/下一步、
+按内容比例组织（句 > 段 > 清单）、术语先用白话说明、保留风险与失败条件、不复述、
+不把已获授权的工作交回用户。
 
 ## 实机验证记录（DSH 0.2.2-rc.1）
 

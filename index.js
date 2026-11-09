@@ -28,6 +28,10 @@ export const Config = Schema.object({
     .default('low')
     .volatile()
     .description('回复详细程度：model 表示不干预，low/medium/high 为固定偏好'),
+  actionable: Schema.boolean()
+    .default(true)
+    .volatile()
+    .description('便于行动：先给结果和下一步，少铺垫，保留风险与失败条件'),
   writingStyle: Schema.boolean()
     .default(false)
     .volatile()

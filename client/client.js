@@ -87,6 +87,8 @@ window.__ModuleLoader__.load({
       'reply.verbosity.low': '低',
       'reply.verbosity.medium': '中',
       'reply.verbosity.high': '高',
+      'reply.actionable.title': '便于行动',
+      'reply.actionable.description': '先给结果和下一步，少铺垫；能一句话说清就不展开，术语先用白话说明',
       'reply.writing.title': '参考我的写作风格',
       'reply.writing.description': '参考你在这段对话里的句式、用词和表达方式；只模仿风格，不复制内容',
       'reply.base.title': '整体预设',
@@ -154,6 +156,8 @@ window.__ModuleLoader__.load({
       'reply.verbosity.low': 'Low',
       'reply.verbosity.medium': 'Medium',
       'reply.verbosity.high': 'High',
+      'reply.actionable.title': 'Actionable replies',
+      'reply.actionable.description': 'Lead with the result and next step; explain jargon in plain language; keep risks and failure conditions',
       'reply.writing.title': 'Reference my writing style',
       'reply.writing.description': 'Mirror your sentence structure, vocabulary, and way of explaining terms in this conversation; style only, not content',
       'reply.base.title': 'Style preset',
@@ -686,6 +690,13 @@ window.__ModuleLoader__.load({
 
         h('div', { key: 'writing', className: 'wdxs-group' }, [
           h('div', { key: 'head', className: 'wdxs-groupHead' }, tr(t, 'reply.group.writing', '写作')),
+          h(ToggleRow, {
+            key: 'actionable',
+            title: tr(t, 'reply.actionable.title', '便于行动'),
+            description: tr(t, 'reply.actionable.description', ''),
+            value: value.actionable !== false,
+            onChange: function (next) { update('actionable', next) },
+          }),
           h(ToggleRow, {
             key: 'toggle',
             title: tr(t, 'reply.writing.title', '参考我的写作风格'),

@@ -12,13 +12,21 @@ test('default style keeps replies concise and adds nothing else', () => {
   const prompt = buildStylePrompt(config())
   assert.match(prompt, /## 回复风格偏好/)
   assert.match(prompt, /保持回复简洁/)
+  assert.match(prompt, /便于行动/)
+  assert.match(prompt, /复杂名词/)
   assert.doesNotMatch(prompt, /基础风格/)
   assert.doesNotMatch(prompt, /亲切程度/)
   assert.doesNotMatch(prompt, /写作风格/)
 })
 
-test('model verbosity with default axes produces no section', () => {
-  assert.equal(buildStylePrompt(config({ verbosity: 'model' })), '')
+test('actionable output stays on with model verbosity', () => {
+  const prompt = buildStylePrompt(config({ verbosity: 'model' }))
+  assert.match(prompt, /便于行动/)
+  assert.doesNotMatch(prompt, /保持回复简洁/)
+})
+
+test('disabling actionable and every style yields no section', () => {
+  assert.equal(buildStylePrompt(config({ verbosity: 'model', actionable: false })), '')
 })
 
 test('style presets and axes compile into short lines', () => {
