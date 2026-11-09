@@ -1,0 +1,38 @@
+#!/usr/bin/expect -f
+# Publish dsh-wdx-relief through npm's browser 2FA flow.
+# Usage: expect scripts/publish-npm.exp
+set timeout 600
+set root [file normalize [file join [file dirname [info script]] ..]]
+cd $root
+log_user 1
+spawn npm publish --access public --registry=https://registry.npmjs.org/
+set published 0
+set failed 0
+expect {
+  "Press ENTER to open in the browser" {
+    send "\r"
+    puts "\nAUTH_BROWSER_OPENED"
+    exp_continue
+  }
+  "+ dsh-wdx-relief" {
+    set published 1
+    puts "\nPUBLISH_DONE"
+    exp_continue
+  }
+  "Published" {
+    set published 1
+    puts "\nPUBLISH_DONE"
+    exp_continue
+  }
+  "npm error" {
+    set failed 1
+    puts "\nPUBLISH_ERROR"
+    exp_continue
+  }
+  eof {}
+  timeout { puts "\nTIMEOUT" }
+}
+catch wait result
+set code [lindex $result 3]
+if {$published && !$failed} { exit 0 }
+exit 1

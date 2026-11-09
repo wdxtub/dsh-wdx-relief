@@ -2,17 +2,18 @@
  * dsh-wdx-relief 网页客户端。
  *
  * 两块 UI：
- * 1. `conversation.composer.dock`：在输入框下方显示「下一句消息」建议，
+ * 1. `conversation.input.overlay`：在输入框里显示「下一句消息」灰字预测，
  *    Tab 填入（Codex 式），点击也可以填入。
  * 2. `plugins.bundle.config`：侧边栏「插件」里 dsh-wdx-relief 的配置页（预测 + 回复风格）。
  *
  * 预测由 Host 侧 `/api/wdx-relief/predict` 生成；这里只负责节流触发、
  * 渲染建议、处理 Tab/Escape，以及开关的读写。
  *
- * 官方约束：
+ * 约束：
  * - 工厂函数不产生模块级副作用；样式随组件挂载，卸载时由 React 移除。
- * - 只使用 slot 已经分配的空间，不读取宿主或其他插件的 DOM 来估算位置。
  * - 配置页使用官方 SettingsFormModel / SettingsForm 的暂存-保存模型。
+ * - 输入框灰字是用户选择的 Codex 式体验，定位会测量 composer 布局；
+ *   这是本插件已知的宿主 DOM 耦合点。
  */
 window.__ModuleLoader__.load({
   id: 'dsh-wdx-relief',
@@ -28,6 +29,7 @@ window.__ModuleLoader__.load({
     var useState = React.useState
     var useEffect = React.useEffect
     var useRef = React.useRef
+    var useLayoutEffect = React.useLayoutEffect
 
     var NS = 'wdx-relief'
     var RPC_PATH = '/api/wdx-relief/predict'
@@ -44,12 +46,6 @@ window.__ModuleLoader__.load({
     // ------------------------------------------------------------------ CSS
 
     var CSS = [
-      '.wdxp-dock{width:100%;display:flex;justify-content:center;padding-top:4px}',
-      '.wdxp-suggestion{max-width:100%;min-width:0;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:18px;display:inline-flex;align-items:center;gap:8px;padding:4px 8px;border-radius:var(--dsw-radius-md);cursor:pointer;text-align:left}',
-      '@media (hover:hover){.wdxp-suggestion:hover{background:var(--dsw-alias-interactive-bg-hover)}}',
-      '.wdxp-label{color:var(--dsw-alias-label-caption);flex:none}',
-      '.wdxp-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
-      '.wdxp-key{flex:none;border:.5px solid var(--dsw-alias-border-l2);border-radius:4px;color:var(--dsw-alias-label-caption);font-size:10px;line-height:16px;padding:0 4px;font-family:ui-monospace,Menlo,monospace}',
       '.wdxs-page{width:100%;display:flex;flex-direction:column;color:var(--dsw-alias-label-primary)}',
       '.wdxs-intro{color:var(--dsw-alias-label-tertiary);margin:-4px 0 4px;font-size:12px;line-height:18px}',
       '.wdxs-groupHead{color:var(--dsw-alias-label-secondary);margin:24px 0 0;font-size:13px;font-weight:600;line-height:20px}',
@@ -194,11 +190,12 @@ window.__ModuleLoader__.load({
     // ---------------------------------------------------------- prediction
 
     /**
-     * 输入框下方的「下一句」建议。
-     * 它注册在官方 `conversation.composer.dock` 里，使用该 slot 分配的空间；
-     * 不查询 composer 的 DOM、不隐藏 placeholder，也不做像素定位。
+     * 输入框里的灰字预测（Codex 式）。
+     * 这是用户明确选择保留的体验：建议叠在空输入框的光标起点上，而不是变成输入框外的一行。
+     * 定位仍读取 composer 的布局矩形；这是该视觉方案的代价，组件只在
+     * `conversation.input.overlay` 自己的浮层里读写，不改动宿主 DOM 的结构。
      */
-    function PredictionSuggestion(props) {
+    function PredictionOverlay(props) {
       var useSession = props.useSession
       var useInput = props.useInput
       var useSettings = props.useSettings
@@ -216,17 +213,20 @@ window.__ModuleLoader__.load({
       var attachments = Array.isArray(input.attachmentIds) ? input.attachmentIds.length : 0
       var phase = input.phase || 'inert'
 
+      var anchorRef = useRef(null)
       var requestSeq = useRef(0)
       var [prediction, setPrediction] = useState(null)
       var [dismissed, setDismissed] = useState('')
+      var [box, setBox] = useState(null)
 
       var idle = enabled && !running && phase === 'plain' && draft.trim() === '' && attachments === 0
       var suggestion = idle && prediction !== null && prediction.text !== dismissed ? prediction.text : ''
 
-      // 切会话时清掉上一条会话的预测。
+      // 切会话时清掉上一条会话的预测与定位。
       useEffect(function () {
         setPrediction(null)
         setDismissed('')
+        setBox(null)
       }, [sessionId])
 
       // 空闲、空输入、开关开启时，去 Host 拿一次预测。服务端按 session.seq 缓存。
@@ -253,6 +253,58 @@ window.__ModuleLoader__.load({
         }
       }, [enabled, running, phase, draft, attachments, sessionId])
 
+      // 测量编辑器位置；输入框尺寸变化时重测。
+      useLayoutEffect(function () {
+        if (suggestion === '') return undefined
+        var measure = function () {
+          var anchor = anchorRef.current
+          var card = anchor && anchor.closest('[data-composer-card]')
+          var editor = card && card.querySelector('[data-composer-input]')
+          if (!card || !editor) return
+          var cardRect = card.getBoundingClientRect()
+          var rect = editor.getBoundingClientRect()
+          var style = window.getComputedStyle(editor)
+          var padTop = parseFloat(style.paddingTop) || 4
+          var padLeft = parseFloat(style.paddingLeft) || 14
+          var padRight = parseFloat(style.paddingRight) || 8
+          setBox({
+            top: rect.top - cardRect.top + padTop,
+            left: rect.left - cardRect.left + padLeft,
+            width: Math.max(0, rect.width - padLeft - padRight),
+            fontSize: style.fontSize,
+            lineHeight: style.lineHeight,
+            fontFamily: style.fontFamily,
+          })
+        }
+        measure()
+        var anchor = anchorRef.current
+        var card = anchor && anchor.closest('[data-composer-card]')
+        var editor = card && card.querySelector('[data-composer-input]')
+        var observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null
+        if (observer && card) observer.observe(card)
+        if (observer && editor) observer.observe(editor)
+        window.addEventListener('resize', measure)
+        return function () {
+          if (observer) observer.disconnect()
+          window.removeEventListener('resize', measure)
+        }
+      }, [suggestion, sessionId, draft])
+
+      var visible = suggestion !== '' && box !== null
+
+      // 灰字出现时藏掉原生 placeholder，避免两层文字叠在一起。
+      useEffect(function () {
+        if (!visible) return undefined
+        var card = anchorRef.current && anchorRef.current.closest('[data-composer-card]')
+        var placeholder = card && card.querySelector('[data-composer-placeholder]')
+        if (!placeholder) return undefined
+        var previous = placeholder.style.visibility
+        placeholder.style.visibility = 'hidden'
+        return function () {
+          placeholder.style.visibility = previous
+        }
+      }, [visible, suggestion])
+
       function accept() {
         if (suggestion === '') return
         try {
@@ -261,27 +313,34 @@ window.__ModuleLoader__.load({
             if (typeof inputActions.persistDraft === 'function') inputActions.persistDraft()
           }
         } catch (error) {
-          // 编辑器锁定时 setDraft 会失败；保持建议可见即可。
+          // 编辑器锁定时 setDraft 会失败；保持预测可见即可。
         }
         setDismissed(suggestion)
         setPrediction(null)
+        var card = anchorRef.current && anchorRef.current.closest('[data-composer-card]')
+        var editor = card && card.querySelector('[data-composer-input]')
+        if (editor) setTimeout(function () { editor.focus({ preventScroll: true }) }, 0)
       }
 
-      // Tab 填入、Escape 暂时忽略。只在编辑区持有焦点时拦截，避免抢别的快捷键。
+      // Tab 填入、Escape 暂时忽略。只在编辑器持有焦点时拦截，避免抢别的快捷键。
       useEffect(function () {
-        if (suggestion === '') return undefined
+        if (!visible) return undefined
         var onKeyDown = function (event) {
-          if (event.isComposing || event.repeat || event.metaKey || event.ctrlKey || event.altKey) return
-          var target = event.target
-          var editing = target !== null && typeof target === 'object' && target.isContentEditable === true
-          if (!editing) return
-          if (event.key === 'Escape') {
+          if (event.isComposing || event.repeat) return
+          var anchor = anchorRef.current
+          var card = anchor && anchor.closest('[data-composer-card]')
+          var editor = card && card.querySelector('[data-composer-input]')
+          var active = document.activeElement
+          var focused = editor !== null && editor !== undefined && (active === editor || editor.contains(active))
+
+          if (event.key === 'Escape' && focused && !event.metaKey && !event.ctrlKey && !event.altKey) {
             event.preventDefault()
             event.stopPropagation()
             setDismissed(suggestion)
             return
           }
-          if (event.key !== 'Tab' || event.shiftKey) return
+          if (event.key !== 'Tab' || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return
+          if (!focused) return
           event.preventDefault()
           event.stopPropagation()
           accept()
@@ -290,33 +349,75 @@ window.__ModuleLoader__.load({
         return function () {
           window.removeEventListener('keydown', onKeyDown, true)
         }
-      }, [suggestion])
+      }, [visible, suggestion])
 
-      if (suggestion === '') return null
-
-      return h('div', { className: 'wdxp-dock' }, [
-        h(PluginStyles, { key: 'style' }),
-        h('button', {
-          key: 'suggestion',
-          type: 'button',
-          className: 'wdxp-suggestion',
-          title: t ? t('prediction.accept') : undefined,
-          'aria-label': (t ? t('prediction.accept') : 'Press Tab to insert the prediction') + ': ' + suggestion,
-          // 指针按下时阻止按钮抢走编辑器的焦点；键盘/辅助技术产生的 click 仍可填入。
-          onPointerDown: function (event) {
-            if (event.button !== 0) return
-            event.preventDefault()
-            accept()
-          },
-          onClick: function (event) {
-            if (event.detail === 0) accept()
-          },
-        }, [
-          h('span', { key: 'label', className: 'wdxp-label' }, tr(t, 'prediction.label', '下一句')),
-          h('span', { key: 'text', className: 'wdxp-text' }, suggestion),
-          h('kbd', { key: 'key', className: 'wdxp-key' }, 'Tab'),
-        ]),
-      ])
+      return h('div', { ref: anchorRef, style: { position: 'relative', width: '100%', height: 0 } },
+        visible
+          ? h('div', {
+              'data-wdx-prediction': true,
+              title: tr(t, 'prediction.accept', 'Press Tab to insert the prediction'),
+              style: {
+                position: 'absolute',
+                top: box.top + 'px',
+                left: box.left + 'px',
+                width: box.width + 'px',
+                display: 'inline-flex',
+                alignItems: 'flex-start',
+                gap: '6px',
+                pointerEvents: 'none',
+                userSelect: 'none',
+                zIndex: 1,
+              },
+            }, [
+              h('span', {
+                key: 'text',
+                'aria-hidden': true,
+                style: {
+                  color: 'var(--dsw-alias-label-caption)',
+                  fontSize: box.fontSize,
+                  lineHeight: box.lineHeight,
+                  fontFamily: box.fontFamily,
+                  minWidth: 0,
+                  flex: '0 1 auto',
+                  whiteSpace: 'nowrap',
+                  overflow: 'hidden',
+                  textOverflow: 'ellipsis',
+                  opacity: 0.9,
+                },
+              }, suggestion),
+              h('button', {
+                key: 'key',
+                type: 'button',
+                title: tr(t, 'prediction.accept', 'Press Tab to insert the prediction'),
+                'aria-label': tr(t, 'prediction.accept', 'Press Tab to insert the prediction') + ': ' + suggestion,
+                onPointerDown: function (event) {
+                  if (event.button !== 0) return
+                  event.preventDefault()
+                  event.stopPropagation()
+                  accept()
+                },
+                onClick: function (event) {
+                  if (event.detail === 0) accept()
+                },
+                style: {
+                  pointerEvents: 'auto',
+                  cursor: 'pointer',
+                  flex: 'none',
+                  marginTop: '2px',
+                  height: '18px',
+                  lineHeight: '18px',
+                  padding: '0 4px',
+                  borderRadius: '4px',
+                  border: '0.5px solid var(--dsw-alias-border-l2)',
+                  background: 'transparent',
+                  color: 'var(--dsw-alias-label-caption)',
+                  fontSize: '10px',
+                  fontFamily: 'ui-monospace, Menlo, monospace',
+                  opacity: 0.75,
+                },
+              }, 'Tab'),
+            ])
+          : null)
     }
 
     // --------------------------------------------------------- settings UI
@@ -686,16 +787,16 @@ window.__ModuleLoader__.load({
         subscribe: function (listener) { return form.subscribe(listener) },
       }
 
-      ctx.slots.inject('conversation.composer.dock', function () {
+      ctx.slots.inject('conversation.input.overlay', function () {
         return ctx.slots.register({
-          name: 'conversation.composer.dock',
+          name: 'conversation.input.overlay',
           id: 'wdx-prediction',
           order: 50,
           locale: NS,
           inject: function (sessionId) {
             return { sessionId: sessionId, hooks: { settings: formSource } }
           },
-        }, PredictionSuggestion)
+        }, PredictionOverlay)
       })
 
       ctx.slots.inject('plugins.bundle.config', function () {
@@ -716,8 +817,7 @@ window.__ModuleLoader__.load({
     exports.name = name
     exports.inject = inject
     exports.apply = apply
-    exports.PredictionSuggestion = PredictionSuggestion
-    exports.PredictionOverlay = PredictionSuggestion
+    exports.PredictionOverlay = PredictionOverlay
     exports.BundleSettingsPage = BundleSettingsPage
     return module.exports
   },

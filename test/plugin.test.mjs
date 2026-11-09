@@ -122,7 +122,7 @@ test('host route refuses malformed requests', async () => {
 
 // ---------------------------------------------------------------- client
 
-test('client bundle registers the composer suggestion and settings page', () => {
+test('client bundle registers the composer ghost prediction and settings page', () => {
   const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
   let loaded = null
   const sandbox = {
@@ -145,6 +145,7 @@ test('client bundle registers the composer suggestion and settings page', () => 
     useState() {},
     useEffect() {},
     useRef() {},
+    useLayoutEffect() {},
   }
   const modelFields = []
   class SettingsFormModel {
@@ -216,7 +217,7 @@ test('client bundle registers the composer suggestion and settings page', () => 
   assert.deepEqual([...locales.map(([ns]) => ns)], ['wdx-relief'])
   assert.deepEqual(Object.keys(locales[0][1]).sort(), ['en', 'zh'])
   assert.deepEqual(registrations.map((entry) => entry.options.name), [
-    'conversation.composer.dock',
+    'conversation.input.overlay',
     'plugins.bundle.config',
   ])
 

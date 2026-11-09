@@ -1,7 +1,7 @@
 {
   "name": "dsh-wdx-relief",
   "version": "0.3.1",
-  "description": "Take the friction out of daily DSH work: predicted next messages below the composer, plus reply length, tone, and writing style controls.",
+  "description": "Take the friction out of daily DSH work: predicted next messages in the composer, plus reply length, tone, and writing style controls.",
   "type": "module",
   "main": "index.js",
   "exports": {

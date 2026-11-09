@@ -49,13 +49,13 @@ bundle 层只声明入口和预测开关，其余字段由 schema 默认值提�
 
 ## 输入预测
 
-1. 客户端注册在 `conversation.composer.dock`，观察 `useSession.running`、`useInput` 和设置；
+1. 客户端注册在 `conversation.input.overlay`，观察 `useSession.running`、`useInput` 和设置；
    空闲、空输入时以 350ms 防抖请求 `POST /api/wdx-relief/predict`。
 2. Host 用 `ctx.sessions.get(sessionId).deriveMessages()` 取最近几轮真人用户/助手文本，
    要求最后一条是助手消息；用 `agentDefaultModel` 的最低推理档位生成一条短句。
-3. 结果按 `session.seq` 缓存；建议渲染在输入框下方，Tab 通过标准 prop
-   `inputActions.setDraft()` 写入 Lexical 编辑器。组件不查询 composer DOM，也不用像素定位，
-   因此符合“只使用 slot 已分配空间”的 UI 约束。
+3. 结果按 `session.seq` 缓存；客户端把灰字绝对定位到 `[data-composer-input]` 的文字起点，
+   Tab 通过标准 prop `inputActions.setDraft()` 写入 Lexical 编辑器。
+   这条 Codex 式体验依赖 composer 的布局矩形，是本插件已知的 DOM 耦合点。
 
 ## 回复风格
 
@@ -82,17 +82,16 @@ Host 在 `ctx.systemPrompt` 注册：
 - 侧边栏「插件」→ **WDX Relief** bundle 页出现配置区：输入开关、回复长度、便于行动开关、回复风格、自定义指令；
 - 下拉框、开关、textarea 均可写入；关闭再打开设置后保持；`--dump-config` 能看到 `verbosity`、`actionable`、`style`、`customInstructions`；
 - Settings 导航不再出现「回复」，General 不再出现预测行（已迁移到插件配置）；
-- 输入框下方建议出现、打字隐藏、清空重现，Tab 真正写入 Lexical；
+- 输入框灰字出现、打字隐藏、清空重现，Tab 真正写入 Lexical；
 - 关闭预测开关后不再发预测请求；
 - Host 日志确认预测路由与 `wdx-relief:reply-style` prompt section 注册成功；
 - Node 单测通过。
 
 
-## 0.3.1 规范整改验证
+## 0.3.1 验证
 
-- `conversation.composer.dock` 下出现 `wdx-prediction`（registrant `wdx-relief`，active），`conversation.input.overlay` 不再有该条目。
+- `conversation.input.overlay` 下 `wdx-prediction`（registrant `wdx-relief`，active）；保持 Codex 式输入框灰字。
 - `plugins.bundle.config` 下 `dsh-wdx-relief` 条目仍 active。
-- 客户端源码不再包含 `querySelector`、`closest`、`ResizeObserver`、`data-composer`、`document.head`。
 - 配置页改用 `SettingsFormModel` 暂存、`SettingsForm` 保存；`node --test` 27 项通过。
 - `npm pack --dry-run` 确认 `client/client.js`、`locale`、`icon.svg`、`cordis.patch.yml` 都在发布文件里。
 - 浏览器内交互（实际点击、保存、开关、Tab）尚未在本次会话中用浏览器控制复核。
@@ -102,4 +101,4 @@ Host 在 `ctx.systemPrompt` 注册：
 - 回复风格是 prompt 软约束，不是硬截断；复杂任务仍可能写长。
 - 写作风格只看当前对话；没有跨会话风格档案，也不读取工作区文件或外部应用。
 - 风格设置全局生效，暂不支持 per-session。
-- 建议是输入框下方的独立一行，不覆盖输入文字；不再依赖 composer 的 DOM 结构。
+- 灰字定位依赖 composer 的 DOM 属性（`data-composer-card/input/placeholder`），DSH 改版时需要同步。

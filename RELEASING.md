@@ -21,6 +21,20 @@
    返回 404 才表示可用；如果被占用，把 `package.json` 的 `name` 改成
    `@wdxtub/dsh-wdx-relief`，并同步改本文命令。
 
+## 浏览器 2FA 发布（固定方式）
+
+npm 账号开启了 `auth-and-writes` 2FA，非交互运行 `npm publish` 会直接报 `EOTP`。
+本仓库用 `expect` 提供 PTY，让 npm 走浏览器认证：
+
+```bash
+expect scripts/publish-npm.exp > /tmp/npm-publish-pty.log 2>&1 &
+tail -f /tmp/npm-publish-pty.log
+```
+
+看到 `AUTH_BROWSER_OPENED` 后，在浏览器的 npm 认证页完成 2FA/Passkey；npm 会自动
+取到 OTP 并继续发布。不要重复启动另一个发布。没有浏览器窗口时，从日志里取出
+`https://www.npmjs.com/auth/cli/...` 手动打开。
+
 ## 首次发布
 
 先提交干净（`npm version` 需要干净的工作区）：
@@ -35,7 +49,7 @@ npm pack --dry-run
 npm pack
 # 插件页 → 添加插件 → 输入 tarball 绝对路径 → 安装 → 立即启用
 
-npm publish --access public --registry=https://registry.npmjs.org/
+expect scripts/publish-npm.exp
 git tag -a v0.1.0 -m "v0.1.0"
 git push origin main --tags
 ```
@@ -57,11 +71,12 @@ git status
 # 更新 CHANGELOG.md 并提交
 npm test
 npm version minor -m "chore: release v%s"
-npm publish --access public --registry=https://registry.npmjs.org/
+expect scripts/publish-npm.exp
 git push --follow-tags
 ```
 
-预发布：
+预发布：把 `scripts/publish-npm.exp` 里的 `npm publish` 参数改为 `--tag next`，
+或直接运行：
 
 ```bash
 npm version 0.2.0-rc.1

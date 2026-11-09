@@ -2,7 +2,7 @@
 
 ## 0.3.1 — 2026-11-09
 
-- 按 DSH 插件规范调整：预测建议改注册到 `conversation.composer.dock`，只使用 slot 已分配空间，不再查询 composer DOM 或做像素定位。
+- 保留 Codex 式输入框灰字预测：建议仍注册在 `conversation.input.overlay`，不改成输入框外的一行。
 - 样式改为随 React 组件挂载/卸载，移除模块级 `document.head` 副作用；移除内联颜色 fallback。
 - 配置页改用官方 `SettingsFormModel` + `SettingsForm`：编辑先暂存，点「保存」才写入；离开页面丢弃草稿。
 - 修正 `dsh.client.inject`：补上 `ui-plugin-manager`，保留 `ui-settings`（`configForms` 的提供方）；移除 `immediately`。
