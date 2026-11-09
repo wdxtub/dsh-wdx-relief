@@ -315,7 +315,8 @@ window.__ModuleLoader__.load({
         } catch (error) {
           // 编辑器锁定时 setDraft 会失败；保持预测可见即可。
         }
-        setDismissed(suggestion)
+        // 只收起当前建议，不把这条建议标记为“忽略”；用户把填入内容删空后，
+        // 同一轮缓存会重新给出它，体验和 Codex 一致。
         setPrediction(null)
         var card = anchorRef.current && anchorRef.current.closest('[data-composer-card]')
         var editor = card && card.querySelector('[data-composer-input]')

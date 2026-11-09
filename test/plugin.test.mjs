@@ -241,3 +241,12 @@ test('client bundle registers the composer ghost prediction and settings page', 
   assert.equal(typeof injected.save, 'function')
   assert.equal(typeof injected.discard, 'function')
 })
+test('accepting a prediction does not permanently dismiss it', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  const start = code.indexOf('function accept()')
+  const end = code.indexOf('// Tab 填入', start)
+  assert.ok(start >= 0 && end > start)
+  const body = code.slice(start, end)
+  assert.match(body, /setPrediction\(null\)/)
+  assert.doesNotMatch(body, /setDismissed\(/)
+})
