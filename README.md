@@ -7,9 +7,14 @@
 
 ## 功能
 
-- **输入框下一句预测**：对话结束后用灰字猜你接下来要发的话，<kbd>Tab</kbd> 填入；打字隐藏，<kbd>Esc</kbd> 忽略。
+- **下一句预测**：对话结束后在输入框下方给一条灰色建议，<kbd>Tab</kbd> 填入；打字隐藏，<kbd>Esc</kbd> 忽略。
 - **回复风格**：长度 **短 / 标准 / 详细**；风格 **默认 / 专业 / 亲和 / 直接 / 跟随我的风格**；可加最多 2000 字的自定义指令。
 - **便于行动**（默认开启）：先给结果和下一步；能一句说清的不写一段，术语先用白话说明；保留风险、失败条件和已授权该做的工作。
+
+## 运行要求
+
+- DSH Web profile；插件依赖 `connection` 与 `sessions` 服务。
+- 已配置默认模型。预测会把最近几轮对话作为 prompt 发给当前默认模型；结果只用于输入框建议，不写入会话日志，也不触发 agent loop。
 
 ## 安装
 
@@ -25,7 +30,13 @@ dsh-wdx-relief
 plugin_manager install_bundle target = "dsh-wdx-relief"
 ```
 
-安装后启用并刷新页面。
+或命令行：
+
+```bash
+dsh plugin --profile <profile> add dsh-wdx-relief
+```
+
+安装后启用；客户端模块会在下次页面加载时挂载。
 
 本地开发时用 `link:` 安装当前目录的方式见 [docs/guide.md](docs/guide.md)。
 

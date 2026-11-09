@@ -2,12 +2,17 @@
  * dsh-wdx-relief 网页客户端。
  *
  * 两块 UI：
- * 1. `conversation.input.overlay`：在输入框里显示「下一句消息」灰字预测，
+ * 1. `conversation.composer.dock`：在输入框下方显示「下一句消息」建议，
  *    Tab 填入（Codex 式），点击也可以填入。
  * 2. `plugins.bundle.config`：侧边栏「插件」里 dsh-wdx-relief 的配置页（预测 + 回复风格）。
  *
  * 预测由 Host 侧 `/api/wdx-relief/predict` 生成；这里只负责节流触发、
- * 定位灰字、处理 Tab/Escape，以及开关的读写。
+ * 渲染建议、处理 Tab/Escape，以及开关的读写。
+ *
+ * 官方约束：
+ * - 工厂函数不产生模块级副作用；样式随组件挂载，卸载时由 React 移除。
+ * - 只使用 slot 已经分配的空间，不读取宿主或其他插件的 DOM 来估算位置。
+ * - 配置页使用官方 SettingsFormModel / SettingsForm 的暂存-保存模型。
  */
 window.__ModuleLoader__.load({
   id: 'dsh-wdx-relief',
@@ -22,23 +27,29 @@ window.__ModuleLoader__.load({
     var h = React.createElement
     var useState = React.useState
     var useEffect = React.useEffect
-    var useLayoutEffect = React.useLayoutEffect
     var useRef = React.useRef
 
     var NS = 'wdx-relief'
     var RPC_PATH = '/api/wdx-relief/predict'
+    var MAX_CUSTOM_CHARS = 2000
     var SWITCH = primitives && primitives.Switch
     var MENU = primitives && primitives.Menu
     var CHEVRON = primitives && primitives.IconChevronDownOutlineRegular
+    var SETTINGS_FORM = primitives && primitives.SettingsForm
+    var SETTINGS_FORM_MODEL = primitives && primitives.SettingsFormModel
+
+    var VERBOSITY_OPTIONS = ['low', 'medium', 'high']
+    var STYLE_OPTIONS = ['default', 'professional', 'friendly', 'blunt', 'follow']
 
     // ------------------------------------------------------------------ CSS
 
     var CSS = [
-      '.wdxr-row{border-bottom:.5px solid var(--dsw-alias-border-l2);justify-content:space-between;align-items:center;gap:24px;padding:16px 0;display:flex}',
-      '.wdxr-text{min-width:0}',
-      '.wdxr-title{font-size:14px;line-height:20px}',
-      '.wdxr-desc{color:var(--dsw-alias-label-secondary);margin-top:4px;font-size:12px;line-height:18px}',
-      '.wdxr-error{color:var(--dsw-alias-state-error-primary);margin-top:4px;font-size:12px;line-height:18px}',
+      '.wdxp-dock{width:100%;display:flex;justify-content:center;padding-top:4px}',
+      '.wdxp-suggestion{max-width:100%;min-width:0;border:0;background:transparent;color:var(--dsw-alias-label-secondary);font:inherit;font-size:12px;line-height:18px;display:inline-flex;align-items:center;gap:8px;padding:4px 8px;border-radius:var(--dsw-radius-md);cursor:pointer;text-align:left}',
+      '@media (hover:hover){.wdxp-suggestion:hover{background:var(--dsw-alias-interactive-bg-hover)}}',
+      '.wdxp-label{color:var(--dsw-alias-label-caption);flex:none}',
+      '.wdxp-text{min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}',
+      '.wdxp-key{flex:none;border:.5px solid var(--dsw-alias-border-l2);border-radius:4px;color:var(--dsw-alias-label-caption);font-size:10px;line-height:16px;padding:0 4px;font-family:ui-monospace,Menlo,monospace}',
       '.wdxs-page{width:100%;display:flex;flex-direction:column;color:var(--dsw-alias-label-primary)}',
       '.wdxs-intro{color:var(--dsw-alias-label-tertiary);margin:-4px 0 4px;font-size:12px;line-height:18px}',
       '.wdxs-groupHead{color:var(--dsw-alias-label-secondary);margin:24px 0 0;font-size:13px;font-weight:600;line-height:20px}',
@@ -49,6 +60,8 @@ window.__ModuleLoader__.load({
       '.wdxs-rowText{flex:1;min-width:0}',
       '.wdxs-title{font-size:14px;line-height:20px}',
       '.wdxs-desc{color:var(--dsw-alias-label-secondary);margin-top:4px;font-size:12px;line-height:18px}',
+      '.wdxs-reset{color:var(--dsw-alias-label-tertiary);background:none;border:0;padding:0;margin-top:6px;font:inherit;font-size:12px;line-height:18px;cursor:pointer;text-decoration:underline}',
+      '@media (hover:hover){.wdxs-reset:hover{color:var(--dsw-alias-label-primary)}}',
       '.wdxs-select{border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);height:36px;color:var(--dsw-alias-label-primary);cursor:pointer;border:none;align-items:center;gap:12px;padding:0 14px;font:inherit;font-size:14px;line-height:22px;display:inline-flex}',
       '@media (hover:hover){.wdxs-select:hover{background:var(--dsw-alias-interactive-bg-hover)}}',
       '.wdxs-chevron{flex:none}',
@@ -56,16 +69,11 @@ window.__ModuleLoader__.load({
       '.wdxs-textarea{box-sizing:border-box;width:100%;min-height:104px;resize:vertical;border-radius:var(--dsw-radius-md);border:.5px solid var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-primary);outline:none;margin-top:10px;padding:10px 12px;font:inherit;font-size:13px;line-height:20px}',
       '.wdxs-textarea:focus-visible{border-color:var(--dsw-alias-state-business-primary)}',
       '.wdxs-textarea::placeholder{color:var(--dsw-alias-label-caption)}',
-      '.wdxs-status{color:var(--dsw-alias-state-success-primary);margin-top:6px;font-size:12px;line-height:18px}',
-      '.wdxs-error{color:var(--dsw-alias-state-error-primary);margin-top:6px;font-size:12px;line-height:18px}',
+      '.wdxs-fallback{border:0;padding:0;margin:0}',
     ].join('')
 
-    if (typeof document !== 'undefined' && document.querySelector('style[data-plugin-css="dsh-wdx-relief"]') === null) {
-      var tag = document.createElement('style')
-      tag.dataset.plugin = 'dsh-wdx-relief'
-      tag.dataset.pluginCss = 'dsh-wdx-relief'
-      tag.textContent = CSS
-      document.head.appendChild(tag)
+    function PluginStyles() {
+      return h('style', { 'data-plugin-css': NS }, CSS)
     }
 
     // -------------------------------------------------------------- locale
@@ -97,12 +105,17 @@ window.__ModuleLoader__.load({
       'reply.custom.title': '自定义指令',
       'reply.custom.description': '补充只影响回复表达的指令，优先级高于上面的长度和风格',
       'reply.custom.placeholder': '例如：先给结论；用中文解释术语；不要使用「首先/其次」。',
-      'reply.saved': '已保存',
-      'reply.saveError': '保存失败，请重试',
       'settings.title': '显示预测消息',
       'settings.description': '根据对话预测你接下来要发送的消息',
-      'settings.error': '保存失败，请重试',
-      'hint.accept': '按 Tab 填入预测',
+      'settings.summary': '预测下一句，并设置回复长度、风格和便于行动。',
+      'prediction.label': '下一句',
+      'prediction.accept': '按 Tab 填入预测',
+      'form.unavailable': '配置暂不可用。',
+      'form.readOnly': '当前部署只读。',
+      'form.saveFailed': '本部署没有接受这些值；已保留供你修改。',
+      'form.save': '保存',
+      'form.saving': '保存中…',
+      'form.reset': '恢复默认',
     }
 
     var en = {
@@ -132,12 +145,25 @@ window.__ModuleLoader__.load({
       'reply.custom.title': 'Custom instructions',
       'reply.custom.description': 'Extra instructions about expression; override the length and style settings above',
       'reply.custom.placeholder': 'e.g. Lead with the conclusion; explain terms in one Chinese sentence; avoid "firstly/secondly".',
-      'reply.saved': 'Saved',
-      'reply.saveError': 'Could not save. Try again.',
       'settings.title': 'Show predicted messages',
       'settings.description': 'Predict what you might send next based on the conversation',
-      'settings.error': 'Could not save. Try again.',
-      'hint.accept': 'Press Tab to insert the prediction',
+      'settings.summary': 'Predict the next message, and set reply length, style, and actionable replies.',
+      'prediction.label': 'Next',
+      'prediction.accept': 'Press Tab to insert the prediction',
+      'form.unavailable': 'Configuration is unavailable.',
+      'form.readOnly': 'This deployment stores settings read-only.',
+      'form.saveFailed': 'The deployment did not accept these values; they were left for you to correct.',
+      'form.save': 'Save',
+      'form.saving': 'Saving…',
+      'form.reset': 'Reset to default',
+    }
+
+    function tr(t, key, fallback) {
+      if (t) {
+        var value = t(key)
+        if (value !== key) return value
+      }
+      return fallback
     }
 
     // --------------------------------------------------------------- host
@@ -165,13 +191,14 @@ window.__ModuleLoader__.load({
       return typeof value === 'string' && value !== '' ? value : null
     }
 
-    // ------------------------------------------------------------- overlay
+    // ---------------------------------------------------------- prediction
 
     /**
-     * 输入框里的灰字预测。
-     * 定位：读 composer 卡片的矩形和编辑器 padding，把灰字放在空输入的光标起始位置。
+     * 输入框下方的「下一句」建议。
+     * 它注册在官方 `conversation.composer.dock` 里，使用该 slot 分配的空间；
+     * 不查询 composer 的 DOM、不隐藏 placeholder，也不做像素定位。
      */
-    function PredictionOverlay(props) {
+    function PredictionSuggestion(props) {
       var useSession = props.useSession
       var useInput = props.useInput
       var useSettings = props.useSettings
@@ -189,20 +216,17 @@ window.__ModuleLoader__.load({
       var attachments = Array.isArray(input.attachmentIds) ? input.attachmentIds.length : 0
       var phase = input.phase || 'inert'
 
-      var anchorRef = useRef(null)
       var requestSeq = useRef(0)
       var [prediction, setPrediction] = useState(null)
       var [dismissed, setDismissed] = useState('')
-      var [box, setBox] = useState(null)
 
       var idle = enabled && !running && phase === 'plain' && draft.trim() === '' && attachments === 0
       var suggestion = idle && prediction !== null && prediction.text !== dismissed ? prediction.text : ''
 
-      // 切会话时清掉上一条会话的预测与定位。
+      // 切会话时清掉上一条会话的预测。
       useEffect(function () {
         setPrediction(null)
         setDismissed('')
-        setBox(null)
       }, [sessionId])
 
       // 空闲、空输入、开关开启时，去 Host 拿一次预测。服务端按 session.seq 缓存。
@@ -229,58 +253,6 @@ window.__ModuleLoader__.load({
         }
       }, [enabled, running, phase, draft, attachments, sessionId])
 
-      // 测量编辑器位置；输入框尺寸变化时重测。
-      useLayoutEffect(function () {
-        if (suggestion === '') return undefined
-        var measure = function () {
-          var anchor = anchorRef.current
-          var card = anchor && anchor.closest('[data-composer-card]')
-          var editor = card && card.querySelector('[data-composer-input]')
-          if (!card || !editor) return
-          var cardRect = card.getBoundingClientRect()
-          var rect = editor.getBoundingClientRect()
-          var style = window.getComputedStyle(editor)
-          var padTop = parseFloat(style.paddingTop) || 4
-          var padLeft = parseFloat(style.paddingLeft) || 14
-          var padRight = parseFloat(style.paddingRight) || 8
-          setBox({
-            top: rect.top - cardRect.top + padTop,
-            left: rect.left - cardRect.left + padLeft,
-            width: Math.max(0, rect.width - padLeft - padRight),
-            fontSize: style.fontSize,
-            lineHeight: style.lineHeight,
-            fontFamily: style.fontFamily,
-          })
-        }
-        measure()
-        var anchor = anchorRef.current
-        var card = anchor && anchor.closest('[data-composer-card]')
-        var editor = card && card.querySelector('[data-composer-input]')
-        var observer = typeof ResizeObserver === 'function' ? new ResizeObserver(measure) : null
-        if (observer && card) observer.observe(card)
-        if (observer && editor) observer.observe(editor)
-        window.addEventListener('resize', measure)
-        return function () {
-          if (observer) observer.disconnect()
-          window.removeEventListener('resize', measure)
-        }
-      }, [suggestion, sessionId, draft])
-
-      var visible = suggestion !== '' && box !== null
-
-      // 灰字出现时藏掉原生 placeholder，避免两层文字叠在一起。
-      useEffect(function () {
-        if (!visible) return undefined
-        var card = anchorRef.current && anchorRef.current.closest('[data-composer-card]')
-        var placeholder = card && card.querySelector('[data-composer-placeholder]')
-        if (!placeholder) return undefined
-        var previous = placeholder.style.visibility
-        placeholder.style.visibility = 'hidden'
-        return function () {
-          placeholder.style.visibility = previous
-        }
-      }, [visible, suggestion])
-
       function accept() {
         if (suggestion === '') return
         try {
@@ -289,34 +261,27 @@ window.__ModuleLoader__.load({
             if (typeof inputActions.persistDraft === 'function') inputActions.persistDraft()
           }
         } catch (error) {
-          // 编辑器锁定时 setDraft 会失败；保持预测可见即可。
+          // 编辑器锁定时 setDraft 会失败；保持建议可见即可。
         }
         setDismissed(suggestion)
         setPrediction(null)
-        var card = anchorRef.current && anchorRef.current.closest('[data-composer-card]')
-        var editor = card && card.querySelector('[data-composer-input]')
-        if (editor) setTimeout(function () { editor.focus({ preventScroll: true }) }, 0)
       }
 
-      // Tab 填入、Escape 暂时忽略。只在编辑器持有焦点时拦截，避免抢别的快捷键。
+      // Tab 填入、Escape 暂时忽略。只在编辑区持有焦点时拦截，避免抢别的快捷键。
       useEffect(function () {
-        if (!visible) return undefined
+        if (suggestion === '') return undefined
         var onKeyDown = function (event) {
-          if (event.isComposing || event.repeat) return
-          var anchor = anchorRef.current
-          var card = anchor && anchor.closest('[data-composer-card]')
-          var editor = card && card.querySelector('[data-composer-input]')
-          var active = document.activeElement
-          var focused = editor !== null && editor !== undefined && (active === editor || editor.contains(active))
-
-          if (event.key === 'Escape' && focused && !event.metaKey && !event.ctrlKey && !event.altKey) {
+          if (event.isComposing || event.repeat || event.metaKey || event.ctrlKey || event.altKey) return
+          var target = event.target
+          var editing = target !== null && typeof target === 'object' && target.isContentEditable === true
+          if (!editing) return
+          if (event.key === 'Escape') {
             event.preventDefault()
             event.stopPropagation()
             setDismissed(suggestion)
             return
           }
-          if (event.key !== 'Tab' || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return
-          if (!focused) return
+          if (event.key !== 'Tab' || event.shiftKey) return
           event.preventDefault()
           event.stopPropagation()
           accept()
@@ -325,93 +290,182 @@ window.__ModuleLoader__.load({
         return function () {
           window.removeEventListener('keydown', onKeyDown, true)
         }
-      }, [visible, suggestion])
+      }, [suggestion])
 
-      return h('div', { ref: anchorRef, style: { position: 'relative', width: '100%', height: 0 } },
-        visible
-          ? h('div', {
-              'data-wdx-prediction': true,
-              'aria-hidden': 'true',
-              title: t ? t('hint.accept') : undefined,
-              style: {
-                position: 'absolute',
-                top: box.top + 'px',
-                left: box.left + 'px',
-                width: box.width + 'px',
-                display: 'inline-flex',
-                alignItems: 'flex-start',
-                gap: '6px',
-                pointerEvents: 'none',
-                userSelect: 'none',
-                zIndex: 1,
-              },
-            }, [
-              h('span', {
-                key: 'text',
-                style: {
-                  color: 'var(--dsw-alias-label-caption, #8b93a1)',
-                  fontSize: box.fontSize,
-                  lineHeight: box.lineHeight,
-                  fontFamily: box.fontFamily,
-                  minWidth: 0,
-                  flex: '0 1 auto',
-                  whiteSpace: 'nowrap',
-                  overflow: 'hidden',
-                  textOverflow: 'ellipsis',
-                  opacity: 0.9,
-                },
-              }, suggestion),
-              h('span', {
-                key: 'key',
-                onPointerDown: function (event) {
-                  if (event.button !== 0) return
-                  event.preventDefault()
-                  event.stopPropagation()
-                  accept()
-                },
-                style: {
-                  pointerEvents: 'auto',
-                  cursor: 'pointer',
-                  flex: 'none',
-                  marginTop: '2px',
-                  height: '18px',
-                  lineHeight: '18px',
-                  padding: '0 4px',
-                  borderRadius: '4px',
-                  border: '0.5px solid var(--dsw-alias-border-l2, #3a3a3a)',
-                  color: 'var(--dsw-alias-label-caption, #8b93a1)',
-                  fontSize: '10px',
-                  fontFamily: 'ui-monospace, Menlo, monospace',
-                  opacity: 0.75,
-                },
-              }, 'Tab'),
-            ])
-          : null)
+      if (suggestion === '') return null
+
+      return h('div', { className: 'wdxp-dock' }, [
+        h(PluginStyles, { key: 'style' }),
+        h('button', {
+          key: 'suggestion',
+          type: 'button',
+          className: 'wdxp-suggestion',
+          title: t ? t('prediction.accept') : undefined,
+          'aria-label': (t ? t('prediction.accept') : 'Press Tab to insert the prediction') + ': ' + suggestion,
+          // 指针按下时阻止按钮抢走编辑器的焦点；键盘/辅助技术产生的 click 仍可填入。
+          onPointerDown: function (event) {
+            if (event.button !== 0) return
+            event.preventDefault()
+            accept()
+          },
+          onClick: function (event) {
+            if (event.detail === 0) accept()
+          },
+        }, [
+          h('span', { key: 'label', className: 'wdxp-label' }, tr(t, 'prediction.label', '下一句')),
+          h('span', { key: 'text', className: 'wdxp-text' }, suggestion),
+          h('kbd', { key: 'key', className: 'wdxp-key' }, 'Tab'),
+        ]),
+      ])
     }
 
-    // ------------------------------------------------------ reply settings
+    // --------------------------------------------------------- settings UI
 
-    var STYLE_OPTIONS = ['default', 'professional', 'friendly', 'blunt', 'follow']
+    function oneOf(value, allowed) {
+      return typeof value === 'string' && allowed.indexOf(value) !== -1 ? value : undefined
+    }
 
-    function tr(t, key, fallback) {
-      if (t) {
-        var value = t(key)
-        if (value !== key) return value
+    function readConfig(scope) {
+      try {
+        var snapshot = scope.getSnapshot()
+        if (snapshot && snapshot.value && typeof snapshot.value === 'object') return snapshot.value
+      } catch (error) {
+        // 配置尚未就绪时按默认值显示。
       }
-      return fallback
+      return {}
     }
 
-    function SelectRow(props) {
+    function legacyStyle(scope) {
+      var value = readConfig(scope)
+      if (value.writingStyle === true) return 'follow'
+      if (value.baseStyle === 'professional' || value.baseStyle === 'friendly' || value.baseStyle === 'blunt') return value.baseStyle
+      return 'default'
+    }
+
+    function booleanText(value) {
+      return value === false ? 'false' : 'true'
+    }
+
+    function parseBoolean(text) {
+      if (text === 'true') return { kind: 'set', value: true }
+      if (text === 'false') return { kind: 'set', value: false }
+      return undefined
+    }
+
+    function choiceField(name, allowed, fallback) {
+      return {
+        field: name,
+        format: function (value) {
+          return oneOf(value, allowed) || fallback
+        },
+        parse: function (text) {
+          var value = oneOf(text, allowed)
+          return value === undefined ? undefined : { kind: 'set', value: value }
+        },
+      }
+    }
+
+    function createSettingsModel(scope) {
+      var model = new SETTINGS_FORM_MODEL(scope, [
+        { field: 'enabled', format: booleanText, parse: parseBoolean },
+        choiceField('verbosity', VERBOSITY_OPTIONS, 'low'),
+        { field: 'actionable', format: booleanText, parse: parseBoolean },
+        {
+          field: 'style',
+          format: function (value) {
+            return oneOf(value, STYLE_OPTIONS) || legacyStyle(scope)
+          },
+          parse: function (text) {
+            var value = oneOf(text, STYLE_OPTIONS)
+            return value === undefined ? undefined : { kind: 'set', value: value }
+          },
+        },
+        {
+          field: 'customInstructions',
+          format: function (value) {
+            return typeof value === 'string' ? value.slice(0, MAX_CUSTOM_CHARS) : ''
+          },
+          parse: function (text) {
+            var value = text.slice(0, MAX_CUSTOM_CHARS)
+            return value === '' ? { kind: 'clear' } : { kind: 'set', value: value }
+          },
+        },
+      ])
+
+      var store = model.bind(function () {
+        return {
+          ...model.shell(),
+          enabled: model.field('enabled'),
+          verbosity: model.field('verbosity'),
+          actionable: model.field('actionable'),
+          style: model.field('style'),
+          customInstructions: model.field('customInstructions'),
+        }
+      })
+
+      return { model: model, store: store }
+    }
+
+    function FieldText(props) {
+      var t = props.t
+      return h('div', { className: 'wdxs-rowText' }, [
+        h('div', { key: 'title', className: 'wdxs-title' }, props.title),
+        props.description ? h('div', { key: 'desc', className: 'wdxs-desc' }, props.description) : null,
+        props.overridden
+          ? h('button', {
+              key: 'reset',
+              type: 'button',
+              className: 'wdxs-reset',
+              onClick: props.onReset,
+            }, tr(t, 'form.reset', '恢复默认'))
+          : null,
+      ])
+    }
+
+    function ToggleField(props) {
+      var field = props.field
+      var checked = field.text !== 'false'
+      var disabled = props.disabled === true
+      return h('div', { className: 'wdxs-row' }, [
+        h(FieldText, {
+          key: 'text',
+          t: props.t,
+          title: props.title,
+          description: props.description,
+          overridden: field.overridden === true,
+          onReset: props.onReset,
+        }),
+        SWITCH
+          ? h(SWITCH, {
+              key: 'switch',
+              checked: checked,
+              label: props.title,
+              disabled: disabled,
+              onChange: function (next) { props.onChange(next) },
+            })
+          : h('button', {
+              key: 'fallback',
+              type: 'button',
+              'aria-pressed': checked,
+              disabled: disabled,
+              onClick: function () { props.onChange(!checked) },
+              className: 'wdxs-select',
+            }, checked ? 'On' : 'Off'),
+      ])
+    }
+
+    function SelectField(props) {
       var [open, setOpen] = useState(false)
       var options = props.options
       var selected = options.filter(function (option) { return option.id === props.value })[0] || options[0]
+      var disabled = props.disabled === true
       var anchor = h('button', {
         type: 'button',
         className: 'wdxs-select',
         'aria-label': props.title || undefined,
         'aria-haspopup': 'menu',
         'aria-expanded': open,
-        disabled: props.disabled === true,
+        disabled: disabled,
         onClick: function () { setOpen(function (value) { return !value }) },
       }, [
         h('span', { key: 'label' }, selected ? (selected.text || selected.label) : ''),
@@ -437,130 +491,75 @@ window.__ModuleLoader__.load({
             key: 'select',
             className: 'wdxs-select',
             value: props.value,
-            disabled: props.disabled === true,
+            disabled: disabled,
             onChange: function (event) { props.onChange(event.target.value) },
           }, options.map(function (option) {
             return h('option', { key: option.id, value: option.id }, option.label)
           }))
 
-
       return h('div', { className: 'wdxs-row' }, [
-        h('div', { key: 'text', className: 'wdxs-rowText' }, [
-          h('div', { key: 'title', className: 'wdxs-title' }, props.title),
-          props.description ? h('div', { key: 'desc', className: 'wdxs-desc' }, props.description) : null,
-        ]),
+        h(FieldText, {
+          key: 'text',
+          t: props.t,
+          title: props.title,
+          description: props.description,
+          overridden: props.overridden === true,
+          onReset: props.onReset,
+        }),
         control,
       ])
     }
 
-    function ToggleRow(props) {
-      return h('div', { className: 'wdxs-row' }, [
-        h('div', { key: 'text', className: 'wdxs-rowText' }, [
-          h('div', { key: 'title', className: 'wdxs-title' }, props.title),
-          props.description ? h('div', { key: 'desc', className: 'wdxs-desc' }, props.description) : null,
-        ]),
-        SWITCH
-          ? h(SWITCH, {
-              key: 'switch',
-              checked: props.value === true,
-              label: props.title,
-              onChange: props.onChange,
-            })
-          : h('button', {
-              key: 'fallback',
-              type: 'button',
-              'aria-pressed': props.value === true,
-              onClick: function () { props.onChange(props.value !== true) },
-              className: 'wdxs-select',
-            }, props.value === true ? 'On' : 'Off'),
-      ])
-    }
-
-    function CustomInstructionsRow(props) {
-      var value = typeof props.value === 'string' ? props.value : ''
-      var [draft, setDraft] = useState(value)
-      var focused = useRef(false)
-      var timer = useRef(null)
-
-      useEffect(function () {
-        if (!focused.current) setDraft(value)
-      }, [value])
-
-      useEffect(function () {
-        return function () {
-          if (timer.current !== null) clearTimeout(timer.current)
-        }
-      }, [])
-
-      function commit(next) {
-        if (next === value) return
-        props.onChange(next)
-      }
-
-      function schedule(next) {
-        var clipped = next.slice(0, 2000)
-        setDraft(clipped)
-        if (timer.current !== null) clearTimeout(timer.current)
-        timer.current = setTimeout(function () {
-          timer.current = null
-          commit(clipped)
-        }, 700)
-      }
-
+    function CustomTextField(props) {
+      var field = props.field
+      var disabled = props.disabled === true
       return h('div', { className: 'wdxs-custom' }, [
-        h('div', { key: 'text', className: 'wdxs-rowText' }, [
-          h('div', { key: 'title', className: 'wdxs-title' }, props.title),
-          h('div', { key: 'desc', className: 'wdxs-desc' }, props.description),
-        ]),
+        h(FieldText, {
+          key: 'text',
+          t: props.t,
+          title: props.title,
+          description: props.description,
+          overridden: field.overridden === true,
+          onReset: props.onReset,
+        }),
         h('textarea', {
           key: 'input',
           className: 'wdxs-textarea',
-          value: draft,
-          maxLength: 2000,
+          value: field.text,
+          maxLength: MAX_CUSTOM_CHARS,
           placeholder: props.placeholder,
           spellCheck: false,
-          onFocus: function () { focused.current = true },
-          onChange: function (event) { schedule(event.target.value) },
-          onBlur: function () {
-            focused.current = false
-            if (timer.current !== null) {
-              clearTimeout(timer.current)
-              timer.current = null
-            }
-            commit(draft)
-          },
+          disabled: disabled,
+          onChange: function (event) { props.onChange(event.target.value) },
         }),
       ])
     }
 
     function BundleSettingsPage(props) {
-      var useSettings = props.useSettings
-      var setField = props.setField
       var t = props.t
-      var settings = useSettings ? useSettings(function (s) { return s }) : undefined
-      var value = settings && settings.value ? settings.value : {}
-      var [error, setError] = useState('')
-      var [saved, setSaved] = useState(false)
-      var savedTimer = useRef(null)
+      if (props.view === 'summary') return tr(t, 'settings.summary', '预测下一句，并设置回复长度、风格和便于行动。')
 
-      useEffect(function () {
-        return function () {
-          if (savedTimer.current !== null) clearTimeout(savedTimer.current)
-        }
-      }, [])
+      var useSettings = props.useSettings
+      var state = useSettings ? useSettings(function (s) { return s }) : undefined
+      if (!state) return null
 
-      function update(field, next) {
-        setError('')
-        Promise.resolve(setField(field, next)).then(function () {
-          setSaved(true)
-          if (savedTimer.current !== null) clearTimeout(savedTimer.current)
-          savedTimer.current = setTimeout(function () { setSaved(false) }, 1800)
-        }).catch(function () {
-          setError(tr(t, 'reply.saveError', '保存失败，请重试'))
-        })
+      var disabled = state.writable === false || state.saving === true
+      var emptyField = { text: '', overridden: false, invalid: false }
+      var enabled = state.enabled || emptyField
+      var verbosity = state.verbosity || emptyField
+      var actionable = state.actionable || emptyField
+      var style = state.style || emptyField
+      var customInstructions = state.customInstructions || emptyField
+
+      function edit(name, value) {
+        if (typeof props.edit === 'function') props.edit(name, value)
       }
 
-      var verbosityOptions = ['low', 'medium', 'high'].map(function (id) {
+      function reset(name) {
+        if (typeof props.resetField === 'function') props.resetField(name)
+      }
+
+      var verbosityOptions = VERBOSITY_OPTIONS.map(function (id) {
         return { id: id, label: tr(t, 'reply.verbosity.' + id, id) }
       })
       var styleOptions = STYLE_OPTIONS.map(function (id) {
@@ -575,70 +574,93 @@ window.__ModuleLoader__.load({
         }
       })
 
-      // 旧配置只有 writingStyle/baseStyle，没有 style；这里按同样的优先级显示。
-      var selectedStyle = value.style
-      if (selectedStyle === undefined) {
-        if (value.writingStyle === true) selectedStyle = 'follow'
-        else if (value.baseStyle === 'professional' || value.baseStyle === 'friendly' || value.baseStyle === 'blunt') selectedStyle = value.baseStyle
-        else selectedStyle = 'default'
+      var formLabels = {
+        unavailable: tr(t, 'form.unavailable', '配置暂不可用。'),
+        readOnly: tr(t, 'form.readOnly', '当前部署只读。'),
+        saveFailed: tr(t, 'form.saveFailed', '保存失败，请重试。'),
+        save: tr(t, 'form.save', '保存'),
+        saving: tr(t, 'form.saving', '保存中…'),
+      }
+
+      var Form = SETTINGS_FORM || function (formProps) {
+        return h('div', { className: 'wdxs-fallback' }, formProps.children)
       }
 
       return h('div', { className: 'wdxs-page' }, [
+        h(PluginStyles, { key: 'style' }),
         h('div', { key: 'intro', className: 'wdxs-intro' }, tr(t, 'reply.intro', '')),
-
-        h('div', { key: 'input', className: 'wdxs-group' }, [
-          h('div', { key: 'head', className: 'wdxs-groupHead' }, tr(t, 'reply.group.input', '输入')),
-          h(ToggleRow, {
-            key: 'prediction',
-            title: tr(t, 'settings.title', '显示预测消息'),
-            description: tr(t, 'settings.description', '根据对话预测你接下来要发送的消息'),
-            value: value.enabled !== false,
-            onChange: function (next) { update('enabled', next) },
+        h(Form, {
+          key: 'form',
+          labels: formLabels,
+          state: state,
+          onSave: function () { if (typeof props.save === 'function') props.save() },
+          onDiscard: function () { if (typeof props.discard === 'function') props.discard() },
+        }, [
+          h('div', { key: 'input', className: 'wdxs-group' }, [
+            h('div', { key: 'head', className: 'wdxs-groupHead' }, tr(t, 'reply.group.input', '输入')),
+            h(ToggleField, {
+              key: 'prediction',
+              t: t,
+              title: tr(t, 'settings.title', '显示预测消息'),
+              description: tr(t, 'settings.description', '根据对话预测你接下来要发送的消息'),
+              field: enabled,
+              disabled: disabled,
+              onChange: function (next) { edit('enabled', String(next)) },
+              onReset: function () { reset('enabled') },
+            }),
+          ]),
+          h('div', { key: 'length', className: 'wdxs-group' }, [
+            h('div', { key: 'head', className: 'wdxs-groupHead' }, tr(t, 'reply.group.length', '回复长度')),
+            h(SelectField, {
+              key: 'verbosity',
+              t: t,
+              title: tr(t, 'reply.verbosity.title', '输出详细程度'),
+              description: tr(t, 'reply.verbosity.description', ''),
+              options: verbosityOptions,
+              value: verbosity.text || 'low',
+              overridden: verbosity.overridden === true,
+              disabled: disabled,
+              onChange: function (next) { edit('verbosity', next) },
+              onReset: function () { reset('verbosity') },
+            }),
+          ]),
+          h('div', { key: 'writing', className: 'wdxs-group' }, [
+            h('div', { key: 'head', className: 'wdxs-groupHead' }, tr(t, 'reply.group.writing', '写作')),
+            h(ToggleField, {
+              key: 'actionable',
+              t: t,
+              title: tr(t, 'reply.actionable.title', '便于行动'),
+              description: tr(t, 'reply.actionable.description', ''),
+              field: actionable,
+              disabled: disabled,
+              onChange: function (next) { edit('actionable', String(next)) },
+              onReset: function () { reset('actionable') },
+            }),
+            h(SelectField, {
+              key: 'style',
+              t: t,
+              title: tr(t, 'reply.style.title', '回复风格'),
+              description: tr(t, 'reply.style.description', ''),
+              options: styleOptions,
+              value: style.text,
+              overridden: style.overridden === true,
+              disabled: disabled,
+              onChange: function (next) { edit('style', next) },
+              onReset: function () { reset('style') },
+            }),
+          ]),
+          h(CustomTextField, {
+            key: 'custom',
+            t: t,
+            title: tr(t, 'reply.custom.title', '自定义指令'),
+            description: tr(t, 'reply.custom.description', ''),
+            placeholder: tr(t, 'reply.custom.placeholder', ''),
+            field: customInstructions,
+            disabled: disabled,
+            onChange: function (next) { edit('customInstructions', next) },
+            onReset: function () { reset('customInstructions') },
           }),
         ]),
-
-        h('div', { key: 'length', className: 'wdxs-group' }, [
-          h('div', { key: 'head', className: 'wdxs-groupHead' }, tr(t, 'reply.group.length', '回复长度')),
-          h(SelectRow, {
-            key: 'verbosity',
-            title: tr(t, 'reply.verbosity.title', '输出详细程度'),
-            description: tr(t, 'reply.verbosity.description', ''),
-            options: verbosityOptions,
-            value: value.verbosity || 'low',
-            onChange: function (next) { update('verbosity', next) },
-          }),
-        ]),
-
-        h('div', { key: 'writing', className: 'wdxs-group' }, [
-          h('div', { key: 'head', className: 'wdxs-groupHead' }, tr(t, 'reply.group.writing', '写作')),
-          h(ToggleRow, {
-            key: 'actionable',
-            title: tr(t, 'reply.actionable.title', '便于行动'),
-            description: tr(t, 'reply.actionable.description', ''),
-            value: value.actionable !== false,
-            onChange: function (next) { update('actionable', next) },
-          }),
-          h(SelectRow, {
-            key: 'style',
-            title: tr(t, 'reply.style.title', '回复风格'),
-            description: tr(t, 'reply.style.description', ''),
-            options: styleOptions,
-            value: selectedStyle,
-            onChange: function (next) { update('style', next) },
-          }),
-        ]),
-
-        h(CustomInstructionsRow, {
-          key: 'custom',
-          title: tr(t, 'reply.custom.title', '自定义指令'),
-          description: tr(t, 'reply.custom.description', ''),
-          placeholder: tr(t, 'reply.custom.placeholder', ''),
-          value: typeof value.customInstructions === 'string' ? value.customInstructions : '',
-          onChange: function (next) { update('customInstructions', next) },
-        }),
-
-        error ? h('div', { key: 'error', className: 'wdxs-error', role: 'alert' }, error) : null,
-        saved && !error ? h('div', { key: 'saved', className: 'wdxs-status', role: 'status' }, tr(t, 'reply.saved', '已保存')) : null,
       ])
     }
 
@@ -653,49 +675,49 @@ window.__ModuleLoader__.load({
       }, 'wdx-relief: dictionaries')
 
       var form = ctx.configForms.get(NS)
+      var settings = createSettingsModel(form)
+      ctx.effect(function () {
+        return function () { settings.model.dispose() }
+      }, 'wdx-relief: settings form')
+
+      // 预测组件只需要只读的配置快照；配置页使用上面的暂存 model。
       var formSource = {
         getSnapshot: function () { return form.getSnapshot() },
         subscribe: function (listener) { return form.subscribe(listener) },
       }
-      ctx.slots.inject('conversation.input.overlay', function () {
+
+      ctx.slots.inject('conversation.composer.dock', function () {
         return ctx.slots.register({
-          name: 'conversation.input.overlay',
+          name: 'conversation.composer.dock',
           id: 'wdx-prediction',
           order: 50,
           locale: NS,
           inject: function (sessionId) {
             return { sessionId: sessionId, hooks: { settings: formSource } }
           },
-        }, PredictionOverlay)
+        }, PredictionSuggestion)
       })
-
-      var configInjected = function () {
-        return {
-          hooks: { settings: formSource },
-          setField: function (field, next) {
-            return form.set(field, next).then(function (accepted) {
-              if (accepted !== true) throw new Error('settings write refused')
-              return accepted
-            })
-          },
-        }
-      }
 
       ctx.slots.inject('plugins.bundle.config', function () {
         return ctx.slots.register({
           name: 'plugins.bundle.config',
           key: 'dsh-wdx-relief',
           locale: NS,
-          inject: configInjected,
+          inject: function () {
+            return {
+              hooks: { settings: settings.store },
+              ...settings.model.actions(),
+            }
+          },
         }, BundleSettingsPage)
       })
-
     }
 
     exports.name = name
     exports.inject = inject
     exports.apply = apply
-    exports.PredictionOverlay = PredictionOverlay
+    exports.PredictionSuggestion = PredictionSuggestion
+    exports.PredictionOverlay = PredictionSuggestion
     exports.BundleSettingsPage = BundleSettingsPage
     return module.exports
   },

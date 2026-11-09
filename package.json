@@ -1,7 +1,7 @@
 {
   "name": "dsh-wdx-relief",
-  "version": "0.3.0",
-  "description": "Take the friction out of daily DSH work: predicted next messages in the composer, plus reply length, tone, and writing style controls.",
+  "version": "0.3.1",
+  "description": "Take the friction out of daily DSH work: predicted next messages below the composer, plus reply length, tone, and writing style controls.",
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -9,7 +9,7 @@
     "./client": "./client/client.js",
     "./package.json": "./package.json",
     "./locale/*.json": "./locale/*.json",
-    "./icon": "./icon.png"
+    "./icon": "./icon.svg"
   },
   "files": [
     "index.js",
@@ -32,11 +32,11 @@
     "client": {
       "platform": "web",
       "inject": [
-        "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-conversation",
+        "@deepseek-ai/dsh-client-ui-settings",
+        "@deepseek-ai/dsh-client-ui-plugin-manager",
         "@deepseek-ai/dsh-client-locale"
-      ],
-      "immediately": true
+      ]
     }
   },
   "scripts": {
@@ -44,16 +44,15 @@
     "prepublishOnly": "npm test"
   },
   "peerDependencies": {
-    "@deepseek-ai/cordis": "^4.0.1",
-    "@deepseek-ai/schemastery": "^3.19.0"
+    "@deepseek-ai/cordis": "^4.0.1"
   },
   "engines": {
     "node": ">=22",
-    "dsh": ">=0.2.0"
+    "dsh": ">=0.2.0 <0.3.0"
   },
   "license": "MIT",
   "devDependencies": {
-    "@deepseek-ai/schemastery": "3.19.0"
+    "@deepseek-ai/cordis": "^4.0.1"
   },
   "author": "wdxtub",
   "keywords": [
@@ -63,9 +62,11 @@
     "prediction",
     "reply-style",
     "web-ui",
-    "productivity"
+    "productivity",
+    "dsh-plugin",
+    "dsh-bundle"
   ],
-  "icon": "./icon.png",
+  "icon": "./icon.svg",
   "repository": {
     "type": "git",
     "url": "git+https://github.com/wdxtub/dsh-wdx-relief.git"
@@ -77,5 +78,8 @@
   "publishConfig": {
     "access": "public",
     "registry": "https://registry.npmjs.org/"
+  },
+  "dependencies": {
+    "@deepseek-ai/schemastery": "3.19.0"
   }
 }

@@ -122,7 +122,7 @@ test('host route refuses malformed requests', async () => {
 
 // ---------------------------------------------------------------- client
 
-test('client bundle loads and registers the overlay and settings row', () => {
+test('client bundle registers the composer suggestion and settings page', () => {
   const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
   let loaded = null
   const sandbox = {
@@ -144,10 +144,36 @@ test('client bundle loads and registers the overlay and settings row', () => {
     createElement() {},
     useState() {},
     useEffect() {},
-    useLayoutEffect() {},
     useRef() {},
   }
-  const primitives = { Switch: function Switch() {} }
+  const modelFields = []
+  class SettingsFormModel {
+    constructor(scope, specs) {
+      this.scope = scope
+      this.specs = specs
+      modelFields.push(specs.map((spec) => spec.field))
+    }
+    shell() {
+      return { available: true, writable: true, dirty: false, invalid: false, saving: false, failed: false }
+    }
+    field(name) {
+      const spec = this.specs.find((entry) => entry.field === name)
+      return { text: spec ? spec.format(undefined) : '', overridden: false, invalid: false }
+    }
+    bind(select) {
+      const value = select()
+      return { getSnapshot: () => value, subscribe: () => () => {} }
+    }
+    actions() {
+      return { edit() {}, resetField() {}, save() {}, discard() {} }
+    }
+    dispose() {}
+  }
+  const primitives = {
+    Switch: function Switch() {},
+    SettingsForm: function SettingsForm() {},
+    SettingsFormModel,
+  }
   const client = loaded.factory((id) => {
     if (id === 'react') return react
     if (id === '@deepseek-ai/dsh-client-ui-primitives') return primitives
@@ -159,14 +185,10 @@ test('client bundle loads and registers the overlay and settings row', () => {
 
   const registrations = []
   const locales = []
-  const writes = []
   const form = {
     getSnapshot: () => ({ status: 'ready', value: { enabled: true }, writable: true }),
     subscribe: () => () => {},
-    set: (field, value) => {
-      writes.push([field, value])
-      return Promise.resolve(true)
-    },
+    mutate: () => Promise.resolve(true),
   }
   const ctx = {
     configForms: { get: (ns) => { assert.equal(ns, 'wdx-relief'); return form } },
@@ -194,7 +216,7 @@ test('client bundle loads and registers the overlay and settings row', () => {
   assert.deepEqual([...locales.map(([ns]) => ns)], ['wdx-relief'])
   assert.deepEqual(Object.keys(locales[0][1]).sort(), ['en', 'zh'])
   assert.deepEqual(registrations.map((entry) => entry.options.name), [
-    'conversation.input.overlay',
+    'conversation.composer.dock',
     'plugins.bundle.config',
   ])
 
@@ -208,9 +230,13 @@ test('client bundle loads and registers the overlay and settings row', () => {
   assert.equal(config.locale, 'wdx-relief')
   assert.equal(typeof registrations[1].component, 'function')
   const injected = config.inject()
-  assert.equal(injected.hooks.settings.getSnapshot().value.enabled, true)
-  injected.setField('enabled', false)
-  assert.deepEqual(writes, [['enabled', false]])
-  injected.setField('verbosity', 'high')
-  assert.deepEqual(writes[1], ['verbosity', 'high'])
+  const settings = injected.hooks.settings.getSnapshot()
+  assert.equal(settings.enabled.text, 'true')
+  assert.equal(settings.verbosity.text, 'low')
+  assert.equal(settings.actionable.text, 'true')
+  assert.equal(settings.style.text, 'default')
+  assert.equal(settings.customInstructions.text, '')
+  assert.equal(typeof injected.edit, 'function')
+  assert.equal(typeof injected.save, 'function')
+  assert.equal(typeof injected.discard, 'function')
 })

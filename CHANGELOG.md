@@ -1,5 +1,14 @@
 # Changelog
 
+## 0.3.1 — 2026-11-09
+
+- 按 DSH 插件规范调整：预测建议改注册到 `conversation.composer.dock`，只使用 slot 已分配空间，不再查询 composer DOM 或做像素定位。
+- 样式改为随 React 组件挂载/卸载，移除模块级 `document.head` 副作用；移除内联颜色 fallback。
+- 配置页改用官方 `SettingsFormModel` + `SettingsForm`：编辑先暂存，点「保存」才写入；离开页面丢弃草稿。
+- 修正 `dsh.client.inject`：补上 `ui-plugin-manager`，保留 `ui-settings`（`configForms` 的提供方）；移除 `immediately`。
+- 打包元数据：`@deepseek-ai/schemastery` 改为运行时依赖；Cordis 保持 peer/dev 同范围；`engines.dsh` 增加 `<0.3.0` 上界；图标改用 SVG。
+- 修正 RELEASING.md 中被占位符替换的版本示例。
+
 ## 0.3.0 — 2026-11-09
 
 - 精简回复设置：长度 3 档（短/标准/详细）；风格 5 选 1（默认/专业/亲和/直接/跟随我的风格）；保留「便于行动」开关和自定义指令。

@@ -80,7 +80,7 @@ test('sanitizeSuggestion strips labels, quotes and refusals', () => {
   assert.equal(sanitizeSuggestion(''), null)
 })
 
-test('sanitizeSuggestion caps the ghost text length', () => {
+test('sanitizeSuggestion caps the suggestion length', () => {
   const result = sanitizeSuggestion('请'.repeat(100))
   assert.ok(result.length <= 60)
 })

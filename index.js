@@ -23,7 +23,7 @@ export const Config = Schema.object({
   enabled: Schema.boolean()
     .default(true)
     .volatile()
-    .description('根据对话在输入框里显示下一条消息预测，Tab 填入'),
+    .description('根据对话在输入框下方显示下一条消息预测，Tab 填入'),
   verbosity: Schema.union(VERBOSITY_VALUES)
     .default('low')
     .volatile()

@@ -1,5 +1,5 @@
 # dsh-wdx-relief bundle patch（dsh.bundle manifest 要求的加载配置）
-# 单包单插件：安装后即注册预测路由、输入框灰字与 General Settings 开关。
+# 单包单插件：安装后注册预测路由、输入框下方建议与 bundle 配置页。
 - insert:
     - id: wdx-relief
       name: dsh-wdx-relief
