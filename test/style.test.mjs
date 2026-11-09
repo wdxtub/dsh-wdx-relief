@@ -8,70 +8,65 @@ function config(values = {}) {
   return Object.fromEntries(Object.entries(merged).map(([key, value]) => [key, { get: () => value }]))
 }
 
-test('default style keeps replies concise and adds nothing else', () => {
+test('default style is short and actionable', () => {
   const prompt = buildStylePrompt(config())
   assert.match(prompt, /## 回复风格偏好/)
-  assert.match(prompt, /保持回复简洁/)
+  assert.match(prompt, /保持回复简短/)
   assert.match(prompt, /便于行动/)
   assert.match(prompt, /复杂名词/)
-  assert.doesNotMatch(prompt, /基础风格/)
-  assert.doesNotMatch(prompt, /亲切程度/)
-  assert.doesNotMatch(prompt, /写作风格/)
+  assert.doesNotMatch(prompt, /专业可靠/)
+  assert.doesNotMatch(prompt, /跟随用户的写作风格/)
 })
 
-test('actionable output stays on with model verbosity', () => {
+test('model verbosity still keeps actionable organization', () => {
   const prompt = buildStylePrompt(config({ verbosity: 'model' }))
   assert.match(prompt, /便于行动/)
-  assert.doesNotMatch(prompt, /保持回复简洁/)
+  assert.doesNotMatch(prompt, /保持回复简短/)
 })
 
 test('disabling actionable and every style yields no section', () => {
   assert.equal(buildStylePrompt(config({ verbosity: 'model', actionable: false })), '')
 })
 
-test('style presets and axes compile into short lines', () => {
-  const prompt = buildStylePrompt(config({
-    verbosity: 'high',
-    baseStyle: 'professional',
-    friendliness: 'reduced',
-    enthusiasm: 'enhanced',
-    emoji: 'reduced',
-    visualAnswers: 'enhanced',
-    headingsLists: 'reduced',
-  }))
-  assert.match(prompt, /更多细节/)
-  assert.match(prompt, /专业可靠/)
-  assert.match(prompt, /更专业、更事实性/)
-  assert.match(prompt, /更有活力/)
-  assert.match(prompt, /少用或不用表情符号/)
-  assert.match(prompt, /表格、图示/)
-  assert.match(prompt, /更多使用段落文本/)
+test('each style compiles to one short line', () => {
+  assert.match(buildStylePrompt(config({ style: 'professional' })), /专业可靠/)
+  assert.match(buildStylePrompt(config({ style: 'friendly' })), /亲和友善/)
+  assert.match(buildStylePrompt(config({ style: 'blunt' })), /直言不讳/)
+  assert.match(buildStylePrompt(config({ style: 'follow' })), /模仿其句式长短/)
 })
 
-test('writing style and custom instructions append after presets', () => {
+test('style and custom instructions append after length and actionable rules', () => {
   const prompt = buildStylePrompt(config({
-    verbosity: 'medium',
-    writingStyle: true,
+    verbosity: 'high',
+    style: 'follow',
     customInstructions: '先给结论；解释术语时用一句中文定义。',
   }))
+  assert.match(prompt, /更详细/)
   assert.match(prompt, /模仿其句式长短/)
   assert.match(prompt, /先给结论；解释术语时用一句中文定义/)
 })
 
-test('custom instructions are capped and unknown values are ignored', () => {
+test('custom instructions are capped and unknown style is ignored', () => {
   const prompt = buildStylePrompt(config({
     verbosity: 'model',
-    baseStyle: 'unknown',
-    friendliness: 'unknown',
+    actionable: false,
+    style: 'unknown',
     customInstructions: 'x'.repeat(3000),
   }))
   assert.ok(prompt.includes('x'.repeat(2000)))
   assert.ok(!prompt.includes('x'.repeat(2001)))
-  assert.doesNotMatch(prompt, /基础风格/)
-  assert.doesNotMatch(prompt, /亲切程度/)
+  assert.doesNotMatch(prompt, /专业可靠|亲和友善|直言不讳/)
+})
+
+test('legacy baseStyle and writingStyle still resolve when style is absent', () => {
+  assert.match(buildStylePrompt(config({ style: undefined, baseStyle: 'professional' })), /专业可靠/)
+  assert.match(buildStylePrompt(config({ style: undefined, writingStyle: true })), /模仿其句式长短/)
+  // An explicit style wins over the legacy fields.
+  const prompt = buildStylePrompt(config({ style: 'blunt', baseStyle: 'professional', writingStyle: true }))
+  assert.match(prompt, /直言不讳/)
+  assert.doesNotMatch(prompt, /专业可靠|模仿其句式长短/)
 })
 
 test('missing config references fall back to defaults', () => {
-  const prompt = buildStylePrompt({})
-  assert.match(prompt, /保持回复简洁/)
-}) 
+  assert.match(buildStylePrompt({}), /保持回复简短/)
+})

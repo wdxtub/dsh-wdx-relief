@@ -42,9 +42,6 @@ window.__ModuleLoader__.load({
       '.wdxs-page{width:100%;display:flex;flex-direction:column;color:var(--dsw-alias-label-primary)}',
       '.wdxs-intro{color:var(--dsw-alias-label-tertiary);margin:-4px 0 4px;font-size:12px;line-height:18px}',
       '.wdxs-groupHead{color:var(--dsw-alias-label-secondary);margin:24px 0 0;font-size:13px;font-weight:600;line-height:20px}',
-      '.wdxs-groupHeadRow{justify-content:space-between;align-items:center;gap:16px;margin:24px 0 0;display:flex}',
-      '.wdxs-groupHeadRow .wdxs-groupHead{margin:0}',
-      '.wdxs-subHead{color:var(--dsw-alias-label-tertiary);margin:14px 0 0;font-size:12px;font-weight:500;line-height:18px}',
       '.wdxs-item{flex-direction:column;gap:2px;max-width:280px;display:flex}',
       '.wdxs-itemName{color:var(--dsw-alias-label-primary);font-size:13px;line-height:20px}',
       '.wdxs-itemDesc{color:var(--dsw-alias-label-caption);white-space:normal;font-size:12px;line-height:16px}',
@@ -74,65 +71,31 @@ window.__ModuleLoader__.load({
     // -------------------------------------------------------------- locale
 
     var zh = {
-      'reply.nav': '回复',
       'reply.intro': '这些偏好只影响回复的表达方式，不改变任务目标、事实准确性或工具权限。',
       'reply.group.input': '输入',
       'reply.group.length': '回复长度',
       'reply.group.writing': '写作',
-      'reply.group.style': '基础风格和语气',
-      'reply.group.custom': '自定义指令',
       'reply.verbosity.title': '输出详细程度',
       'reply.verbosity.description': '选择回复包含细节的详细程度',
-      'reply.verbosity.model': '模型默认',
-      'reply.verbosity.low': '低',
-      'reply.verbosity.medium': '中',
-      'reply.verbosity.high': '高',
+      'reply.verbosity.low': '短',
+      'reply.verbosity.medium': '标准',
+      'reply.verbosity.high': '详细',
       'reply.actionable.title': '便于行动',
       'reply.actionable.description': '先给结果和下一步，少铺垫；能一句话说清就不展开，术语先用白话说明',
-      'reply.writing.title': '参考我的写作风格',
-      'reply.writing.description': '参考你在这段对话里的句式、用词和表达方式；只模仿风格，不复制内容',
-      'reply.base.title': '整体预设',
-      'reply.base.description': '选择一个整体风格；下面的细节可以继续微调',
-      'reply.base.default': '默认',
-      'reply.base.professional': '专业可靠',
-      'reply.base.friendly': '亲和友善',
-      'reply.base.blunt': '直言不讳',
-      'reply.base.imaginative': '天马行空',
-      'reply.base.efficient': '高效务实',
-      'reply.base.snarky': '吐槽达人',
-      'reply.base.option.default.desc': '不额外指定整体风格',
-      'reply.base.option.professional.desc': '精雕细琢，先结论后依据',
-      'reply.base.option.friendly.desc': '温和健谈，有耐心',
-      'reply.base.option.blunt.desc': '直率指出问题与取舍',
-      'reply.base.option.imaginative.desc': '大胆、有想象力的方案',
-      'reply.base.option.efficient.desc': '简练直白，最短路径',
-      'reply.base.option.snarky.desc': '犀利幽默，不人身攻击',
-      'reply.group.axis': '细节调整',
-      'reply.axis.default': '默认',
-      'reply.axis.enhanced': '增强',
-      'reply.axis.reduced': '减弱',
-      'reply.friendliness.title': '亲切程度',
-      'reply.friendliness.description': '回复的友好与亲近程度',
-      'reply.friendliness.enhanced': '更友好、更亲近',
-      'reply.friendliness.reduced': '更专业、事实性更强',
-      'reply.enthusiasm.title': '热情程度',
-      'reply.enthusiasm.description': '回复的活力与热情',
-      'reply.enthusiasm.enhanced': '更加活力充沛',
-      'reply.enthusiasm.reduced': '更加冷静中立',
-      'reply.emoji.title': '表情符号',
-      'reply.emoji.description': '回复中表情符号的使用程度',
-      'reply.emoji.enhanced': '适当使用表情符号',
-      'reply.emoji.reduced': '尽量少用表情符号',
-      'reply.visualAnswers.title': '可视化回答',
-      'reply.visualAnswers.description': '表格、图示等结构化表达的使用程度',
-      'reply.visualAnswers.enhanced': '更多使用可视化结构',
-      'reply.visualAnswers.reduced': '优先使用段落文字',
-      'reply.headingsLists.title': '标题和列表',
-      'reply.headingsLists.description': '标题和列表结构的使用程度',
-      'reply.headingsLists.enhanced': '采用清晰格式与列表结构',
-      'reply.headingsLists.reduced': '更多段落文本，而非列表结构',
+      'reply.style.title': '回复风格',
+      'reply.style.description': '选择整体语气和表达方式',
+      'reply.style.default': '默认',
+      'reply.style.professional': '专业',
+      'reply.style.friendly': '亲和',
+      'reply.style.blunt': '直接',
+      'reply.style.follow': '跟随我的风格',
+      'reply.style.option.default.desc': '中立、简洁',
+      'reply.style.option.professional.desc': '精确、结构化，少口语',
+      'reply.style.option.friendly.desc': '温和、有耐心，术语先解释',
+      'reply.style.option.blunt.desc': '直说问题和取舍',
+      'reply.style.option.follow.desc': '模仿你在这段对话里的句式与用词',
       'reply.custom.title': '自定义指令',
-      'reply.custom.description': '补充只影响回复表达的指令，例如先给结论、少用列表',
+      'reply.custom.description': '补充只影响回复表达的指令，优先级高于上面的长度和风格',
       'reply.custom.placeholder': '例如：先给结论；用中文解释术语；不要使用「首先/其次」。',
       'reply.saved': '已保存',
       'reply.saveError': '保存失败，请重试',
@@ -143,65 +106,31 @@ window.__ModuleLoader__.load({
     }
 
     var en = {
-      'reply.nav': 'Replies',
       'reply.intro': 'These preferences shape expression only. They do not change goals, facts, or tool permissions.',
       'reply.group.input': 'Input',
       'reply.group.length': 'Reply length',
       'reply.group.writing': 'Writing',
-      'reply.group.style': 'Base style and tone',
-      'reply.group.custom': 'Custom instructions',
       'reply.verbosity.title': 'Output detail',
       'reply.verbosity.description': 'How much detail replies should include',
-      'reply.verbosity.model': 'Model default',
-      'reply.verbosity.low': 'Low',
-      'reply.verbosity.medium': 'Medium',
-      'reply.verbosity.high': 'High',
+      'reply.verbosity.low': 'Short',
+      'reply.verbosity.medium': 'Standard',
+      'reply.verbosity.high': 'Detailed',
       'reply.actionable.title': 'Actionable replies',
       'reply.actionable.description': 'Lead with the result and next step; explain jargon in plain language; keep risks and failure conditions',
-      'reply.writing.title': 'Reference my writing style',
-      'reply.writing.description': 'Mirror your sentence structure, vocabulary, and way of explaining terms in this conversation; style only, not content',
-      'reply.base.title': 'Style preset',
-      'reply.base.description': 'Pick an overall style; fine-tune it below',
-      'reply.base.default': 'Default',
-      'reply.base.professional': 'Professional',
-      'reply.base.friendly': 'Friendly',
-      'reply.base.blunt': 'Blunt',
-      'reply.base.imaginative': 'Imaginative',
-      'reply.base.efficient': 'Efficient',
-      'reply.base.snarky': 'Snarky',
-      'reply.base.option.default.desc': "Keep the model's default tone",
-      'reply.base.option.professional.desc': 'Polished, conclusion first',
-      'reply.base.option.friendly.desc': 'Warm, patient, approachable',
-      'reply.base.option.blunt.desc': 'Direct about problems and tradeoffs',
-      'reply.base.option.imaginative.desc': 'Bold, imaginative options',
-      'reply.base.option.efficient.desc': 'Terse and action-oriented',
-      'reply.base.option.snarky.desc': 'Sharp humor without personal attacks',
-      'reply.group.axis': 'Fine-tuning',
-      'reply.axis.default': 'Default',
-      'reply.axis.enhanced': 'More',
-      'reply.axis.reduced': 'Less',
-      'reply.friendliness.title': 'Friendliness',
-      'reply.friendliness.description': 'How warm and approachable replies feel',
-      'reply.friendliness.enhanced': 'Warmer and closer',
-      'reply.friendliness.reduced': 'More factual and professional',
-      'reply.enthusiasm.title': 'Enthusiasm',
-      'reply.enthusiasm.description': 'How energetic replies feel',
-      'reply.enthusiasm.enhanced': 'More energetic',
-      'reply.enthusiasm.reduced': 'Calmer and more neutral',
-      'reply.emoji.title': 'Emoji',
-      'reply.emoji.description': 'How often replies use emoji',
-      'reply.emoji.enhanced': 'Use emoji when appropriate',
-      'reply.emoji.reduced': 'Avoid emoji',
-      'reply.visualAnswers.title': 'Visual answers',
-      'reply.visualAnswers.description': 'How often replies use tables and diagrams',
-      'reply.visualAnswers.enhanced': 'More tables and diagrams',
-      'reply.visualAnswers.reduced': 'Prefer prose',
-      'reply.headingsLists.title': 'Headings and lists',
-      'reply.headingsLists.description': 'How often replies use headings and lists',
-      'reply.headingsLists.enhanced': 'Clear headings and lists',
-      'reply.headingsLists.reduced': 'More prose, fewer lists',
+      'reply.style.title': 'Reply style',
+      'reply.style.description': 'Choose the overall tone and expression',
+      'reply.style.default': 'Default',
+      'reply.style.professional': 'Professional',
+      'reply.style.friendly': 'Friendly',
+      'reply.style.blunt': 'Blunt',
+      'reply.style.follow': 'Follow my style',
+      'reply.style.option.default.desc': 'Neutral and concise',
+      'reply.style.option.professional.desc': 'Precise, structured, less colloquial',
+      'reply.style.option.friendly.desc': 'Warm, patient, explains terms first',
+      'reply.style.option.blunt.desc': 'Straight about problems and tradeoffs',
+      'reply.style.option.follow.desc': 'Mirror your sentence structure and wording',
       'reply.custom.title': 'Custom instructions',
-      'reply.custom.description': 'Extra instructions about expression, such as leading with the conclusion',
+      'reply.custom.description': 'Extra instructions about expression; override the length and style settings above',
       'reply.custom.placeholder': 'e.g. Lead with the conclusion; explain terms in one Chinese sentence; avoid "firstly/secondly".',
       'reply.saved': 'Saved',
       'reply.saveError': 'Could not save. Try again.',
@@ -462,8 +391,7 @@ window.__ModuleLoader__.load({
 
     // ------------------------------------------------------ reply settings
 
-    var BASE_STYLE_OPTIONS = ['default', 'professional', 'friendly', 'blunt', 'imaginative', 'efficient', 'snarky']
-    var AXIS_OPTIONS = ['enhanced', 'default', 'reduced']
+    var STYLE_OPTIONS = ['default', 'professional', 'friendly', 'blunt', 'follow']
 
     function tr(t, key, fallback) {
       if (t) {
@@ -515,7 +443,6 @@ window.__ModuleLoader__.load({
             return h('option', { key: option.id, value: option.id }, option.label)
           }))
 
-      if (props.compact === true) return control
 
       return h('div', { className: 'wdxs-row' }, [
         h('div', { key: 'text', className: 'wdxs-rowText' }, [
@@ -633,33 +560,27 @@ window.__ModuleLoader__.load({
         })
       }
 
-      var verbosityOptions = ['model', 'low', 'medium', 'high'].map(function (id) {
+      var verbosityOptions = ['low', 'medium', 'high'].map(function (id) {
         return { id: id, label: tr(t, 'reply.verbosity.' + id, id) }
       })
-      var baseOptions = BASE_STYLE_OPTIONS.map(function (id) {
-        var name = tr(t, 'reply.base.' + id, id)
+      var styleOptions = STYLE_OPTIONS.map(function (id) {
+        var name = tr(t, 'reply.style.' + id, id)
         return {
           id: id,
           text: name,
           label: h('span', { className: 'wdxs-item' }, [
             h('span', { key: 'name', className: 'wdxs-itemName' }, name),
-            h('span', { key: 'desc', className: 'wdxs-itemDesc' }, tr(t, 'reply.base.option.' + id + '.desc', '')),
+            h('span', { key: 'desc', className: 'wdxs-itemDesc' }, tr(t, 'reply.style.option.' + id + '.desc', '')),
           ]),
         }
       })
-      var axisOptions = AXIS_OPTIONS.map(function (id) {
-        return { id: id, label: tr(t, 'reply.axis.' + id, id) }
-      })
 
-      function axisRow(field, titleKey, descriptionKey) {
-        return h(SelectRow, {
-          key: field,
-          title: tr(t, titleKey, field),
-          description: tr(t, descriptionKey, ''),
-          options: axisOptions,
-          value: value[field] || 'default',
-          onChange: function (next) { update(field, next) },
-        })
+      // 旧配置只有 writingStyle/baseStyle，没有 style；这里按同样的优先级显示。
+      var selectedStyle = value.style
+      if (selectedStyle === undefined) {
+        if (value.writingStyle === true) selectedStyle = 'follow'
+        else if (value.baseStyle === 'professional' || value.baseStyle === 'friendly' || value.baseStyle === 'blunt') selectedStyle = value.baseStyle
+        else selectedStyle = 'default'
       }
 
       return h('div', { className: 'wdxs-page' }, [
@@ -697,31 +618,14 @@ window.__ModuleLoader__.load({
             value: value.actionable !== false,
             onChange: function (next) { update('actionable', next) },
           }),
-          h(ToggleRow, {
-            key: 'toggle',
-            title: tr(t, 'reply.writing.title', '参考我的写作风格'),
-            description: tr(t, 'reply.writing.description', ''),
-            value: value.writingStyle === true,
-            onChange: function (next) { update('writingStyle', next) },
-          }),
-        ]),
-
-        h('div', { key: 'style', className: 'wdxs-group' }, [
-          h('div', { key: 'head', className: 'wdxs-groupHead' }, tr(t, 'reply.group.style', '基础风格和语气')),
           h(SelectRow, {
-            key: 'base',
-            title: tr(t, 'reply.base.title', '整体预设'),
-            description: tr(t, 'reply.base.description', ''),
-            options: baseOptions,
-            value: value.baseStyle || 'default',
-            onChange: function (next) { update('baseStyle', next) },
+            key: 'style',
+            title: tr(t, 'reply.style.title', '回复风格'),
+            description: tr(t, 'reply.style.description', ''),
+            options: styleOptions,
+            value: selectedStyle,
+            onChange: function (next) { update('style', next) },
           }),
-          h('div', { key: 'axisHead', className: 'wdxs-subHead' }, tr(t, 'reply.group.axis', '细节调整')),
-          axisRow('friendliness', 'reply.friendliness.title', 'reply.friendliness.description'),
-          axisRow('enthusiasm', 'reply.enthusiasm.title', 'reply.enthusiasm.description'),
-          axisRow('emoji', 'reply.emoji.title', 'reply.emoji.description'),
-          axisRow('visualAnswers', 'reply.visualAnswers.title', 'reply.visualAnswers.description'),
-          axisRow('headingsLists', 'reply.headingsLists.title', 'reply.headingsLists.description'),
         ]),
 
         h(CustomInstructionsRow, {

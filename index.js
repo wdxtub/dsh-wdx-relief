@@ -10,7 +10,7 @@
  */
 import Schema from '@deepseek-ai/schemastery'
 import { createPredictionService } from './src/prediction.js'
-import { AXIS_VALUES, BASE_STYLE_VALUES, VERBOSITY_VALUES, buildStylePrompt } from './src/style.js'
+import { STYLE_VALUES, VERBOSITY_VALUES, buildStylePrompt } from './src/style.js'
 
 export const name = 'wdx-relief'
 
@@ -32,19 +32,14 @@ export const Config = Schema.object({
     .default(true)
     .volatile()
     .description('便于行动：先给结果和下一步，少铺垫，保留风险与失败条件'),
-  writingStyle: Schema.boolean()
-    .default(false)
+  style: Schema.union(STYLE_VALUES)
     .volatile()
-    .description('参考用户在当前对话里的写作风格'),
-  baseStyle: Schema.union(BASE_STYLE_VALUES)
+    .description('回复风格：default / professional / friendly / blunt / follow'),
+  /** 0.2.0 及更早版本的字段，仅用于旧配置迁移，界面不再展示。 */
+  writingStyle: Schema.boolean().default(false).volatile(),
+  baseStyle: Schema.union(['default', 'professional', 'friendly', 'blunt', 'imaginative', 'efficient', 'snarky'])
     .default('default')
-    .volatile()
-    .description('整体风格与语气预设'),
-  friendliness: Schema.union(AXIS_VALUES).default('default').volatile().description('亲切程度'),
-  enthusiasm: Schema.union(AXIS_VALUES).default('default').volatile().description('热情程度'),
-  emoji: Schema.union(AXIS_VALUES).default('default').volatile().description('表情符号使用程度'),
-  visualAnswers: Schema.union(AXIS_VALUES).default('default').volatile().description('可视化回答程度'),
-  headingsLists: Schema.union(AXIS_VALUES).default('default').volatile().description('标题和列表使用程度'),
+    .volatile(),
   customInstructions: Schema.string()
     .default('')
     .volatile()

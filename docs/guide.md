@@ -25,16 +25,12 @@ dsh plugin --profile web add link:/path/to/dsh-wdx-relief
 | 字段 | 默认 | 说明 |
 |---|---|---|
 | `enabled` | `true` | 输入框预测开关 |
-| `verbosity` | `low` | `model` / `low` / `medium` / `high` |
+| `verbosity` | `low` | `low` / `medium` / `high`（旧值 `model` 仍兼容） |
 | `actionable` | `true` | 便于行动：先结果/下一步、白话解释术语、保留风险 |
-| `writingStyle` | `false` | 参考当前对话的写作风格 |
-| `baseStyle` | `default` | 7 个基础风格预设之一 |
-| `friendliness` | `default` | `default` / `enhanced` / `reduced` |
-| `enthusiasm` | `default` | 同上 |
-| `emoji` | `default` | 同上 |
-| `visualAnswers` | `default` | 同上 |
-| `headingsLists` | `default` | 同上 |
+| `style` | `default` | `default` / `professional` / `friendly` / `blunt` / `follow` |
 | `customInstructions` | `''` | 最多 2000 字 |
+
+旧版本的 `writingStyle` / `baseStyle` 仍保留在 schema 里做迁移：没有 `style` 时，`writingStyle: true` 映射为 `follow`，`baseStyle` 的 professional/friendly/blunt 映射到同名风格；设置页只写新的 `style`。
 
 bundle 层只声明入口和预测开关，其余字段由 schema 默认值提供：
 
@@ -77,13 +73,13 @@ Host 在 `ctx.systemPrompt` 注册：
 
 ## 实机验证记录（DSH 0.2.2-rc.1）
 
-- 侧边栏「插件」→ **WDX Relief** bundle 页出现配置区：输入开关、回复长度、写作风格、基础风格、五个语气轴、自定义指令；
-- 下拉框、开关、textarea 均可写入；关闭再打开设置后保持；`--dump-config` 能看到 `verbosity`、`writingStyle`、`baseStyle`、`customInstructions`；
+- 侧边栏「插件」→ **WDX Relief** bundle 页出现配置区：输入开关、回复长度、便于行动开关、回复风格、自定义指令；
+- 下拉框、开关、textarea 均可写入；关闭再打开设置后保持；`--dump-config` 能看到 `verbosity`、`actionable`、`style`、`customInstructions`；
 - Settings 导航不再出现「回复」，General 不再出现预测行（已迁移到插件配置）；
 - 输入框灰字出现、打字隐藏、清空重现，Tab 真正写入 Lexical；
 - 关闭预测开关后不再发预测请求；
 - Host 日志确认预测路由与 `wdx-relief:reply-style` prompt section 注册成功；
-- 25 个 Node 单测通过。
+- 27 个 Node 单测通过。
 
 ## 已知限制
 

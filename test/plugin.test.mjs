@@ -84,7 +84,7 @@ test('host route returns a prediction and then serves it from cache', async () =
   assert.equal(host.ctx.sections.length, 1)
   assert.equal(host.ctx.sections[0].name, 'wdx-relief:reply-style')
   assert.equal(host.ctx.sections[0].interpolate, false)
-  assert.ok(host.ctx.sections[0].text().includes('保持回复简洁'))
+  assert.ok(host.ctx.sections[0].text().includes('保持回复简短'))
 
   const first = await route.fetch(request({ sessionId: 'session-1' }))
   assert.equal(first.status, 200)
