@@ -1,0 +1,35 @@
+#!/usr/bin/expect -f
+# Log in to the npm registry through the browser flow.
+# Called by scripts/publish-npm.sh only when `npm whoami` fails.
+set timeout 600
+log_user 1
+spawn npm login --registry=https://registry.npmjs.org/ --auth-type=web
+set done 0
+set failed 0
+expect {
+  "Press ENTER to open in the browser" {
+    send "\r"
+    puts "\nLOGIN_BROWSER_OPENED"
+    exp_continue
+  }
+  "Logged in on" {
+    set done 1
+    puts "\nLOGIN_DONE"
+    exp_continue
+  }
+  "Username:" {
+    puts "\nLOGIN_NEEDS_MANUAL"
+    exit 2
+  }
+  -re "npm error|E401|EOTP" {
+    set failed 1
+    puts "\nLOGIN_ERROR"
+    exp_continue
+  }
+  eof {}
+  timeout { puts "\nTIMEOUT" }
+}
+catch wait result
+set code [lindex $result 3]
+if {$done && !$failed} { exit 0 }
+exit 1

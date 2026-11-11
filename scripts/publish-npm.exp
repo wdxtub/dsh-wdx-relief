@@ -1,7 +1,10 @@
 #!/usr/bin/expect -f
 # Publish dsh-wdx-relief through npm's browser 2FA flow.
-# Usage: expect scripts/publish-npm.exp
+# NPM_PKG and NPM_VERSION are exported by scripts/publish-npm.sh.
+# Usage: NPM_PKG=dsh-wdx-relief NPM_VERSION=0.4.0 expect scripts/publish-npm.exp
 set timeout 600
+set pkg $env(NPM_PKG)
+set version $env(NPM_VERSION)
 set root [file normalize [file join [file dirname [info script]] ..]]
 cd $root
 log_user 1
@@ -14,7 +17,7 @@ expect {
     puts "\nAUTH_BROWSER_OPENED"
     exp_continue
   }
-  "+ dsh-wdx-relief" {
+  "+ $pkg@$version" {
     set published 1
     puts "\nPUBLISH_DONE"
     exp_continue

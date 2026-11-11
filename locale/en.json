@@ -1,6 +1,6 @@
 {
   "meta": {
     "title": "WDX Relief",
-    "description": "Take the friction out of daily DSH work: predicted next messages appear in the composer and fill with Tab, while reply length, tone, and writing style follow your preferences."
+    "description": "Take the friction out of daily DSH work: predict your next message, show a live turn line above the composer, and ask side questions in the right panel with a model picker—without polluting the model context."
   }
 }

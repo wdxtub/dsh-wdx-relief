@@ -1,5 +1,21 @@
 # Changelog
 
+## 0.4.0 — 2026-11-11
+
+- 新增 **输入框上的一行**（默认开启）：逐轮显示「这一轮在做什么、到哪了」，不再是「离开三分钟后」的会话级回顾。
+  - 四种语义独立开关：活动流水（`recapActivity`）、状态耗时（`recapTiming`）、思考预览（`recapReasoning`）、语义摘要（`recap`）。默认只开语义摘要，回到旧版一行概括的观感；前三项只读事件窗口，本地生成、零模型调用，需要时再打开，避免与会话里已有的工具卡片/耗时/推理重复交叉。
+  - 摘要参考 `@lanlance/pi-recap` 的门限：`recapMinTurns`（默认 3）、`recapCooldownTurns`（默认 3）、`recapSimilarityThreshold`（默认 0.7）、`recapMaxWords`（默认 40，中文按字算）；`recapPlacement` 可选输入框上方 / 下方。
+  - `recapModelChain` 支持按顺序尝试 `provider/model`；留空自动挑便宜模型（flash / mini / lite / haiku 等），最后退回默认模型。模型失败时退回本地短拼接，并带 `degraded`。
+  - 这一行是纯 UI：只读 `deriveMessages()` 与事件窗口，模型调用走 `ctx.llm.stream`，不写会话、不注入 prompt、不进入模型上下文。
+- 右侧栏 WDX Relief 页面改为 Tab：默认「没接住的事」，「旁问」单独一个 Tab，不再平铺。
+- 旁问输入框改为 composer 风格：圆角卡片、底部模型位、右侧圆形发送/停止按钮；模型位来自 `ctx.modelDirectories`，选中的模型只影响旁问，不改主会话。宽度不够时模型名收成数据图标，只保留图标和下拉箭头。
+- 移除旁问面板里重复的「不写入上下文」徽标和「只留在面板…」提示。
+- 新增 **右侧栏「旁问」**：输入问题后用当前会话模型（或面板选的模型）回答，背景只取最近几轮文本；问答只存在面板内存里，不写会话、不写命令日志，也不进入模型上下文。
+- 新增 `POST /api/wdx-relief/recap` 与 `POST /api/wdx-relief/btw`；旁问路由复用 `src/btw.js`，不产生命令生命周期。
+- 旧 Host 未加载旁问路由时，面板显示「旁问路由未加载；请重启 DSH 后再试」，不再直接暴露 HTTP 404。
+- `dsh.client.inject` 增加 `dsh-client-ui-sidebar-right`；Host 依赖保持 `connection` 与 `sessions`，不再注册 composer `/btw` 命令和 transcript 卡片。
+- 更新 README、开发文档和 bundle 默认配置。
+
 ## 0.3.2 — 2026-11-09
 
 - 修复：Tab 填入预测后把输入删空，建议不会重新出现；现在只收起当前建议，同一轮缓存会重新给出，Esc 仍忽略本轮。

@@ -1,7 +1,13 @@
 # dsh-wdx-relief bundle patch（dsh.bundle manifest 要求的加载配置）
-# 单包单插件：安装后注册预测路由、输入框下方建议与 bundle 配置页。
+# 单包单插件：安装后注册预测/回顾/今日/旁问路由、右侧栏页面、输入框建议与 bundle 配置页。
 - insert:
     - id: wdx-relief
       name: dsh-wdx-relief
       config:
         enabled: true
+        recap: true
+        recapActivity: false
+        recapTiming: false
+        recapReasoning: false
+        recapPlacement: above
+        today: true

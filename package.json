@@ -1,7 +1,7 @@
 {
   "name": "dsh-wdx-relief",
-  "version": "0.3.2",
-  "description": "Take the friction out of daily DSH work: predicted next messages in the composer, plus reply length, tone, and writing style controls.",
+  "version": "0.4.0",
+  "description": "Take the friction out of daily DSH work: predicted next messages, a live one-line turn recap above the composer, and sidebar side questions with a composer-style model picker that stay out of the model context.",
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -35,13 +35,16 @@
         "@deepseek-ai/dsh-client-ui-conversation",
         "@deepseek-ai/dsh-client-ui-settings",
         "@deepseek-ai/dsh-client-ui-plugin-manager",
-        "@deepseek-ai/dsh-client-locale"
+        "@deepseek-ai/dsh-client-locale",
+        "@deepseek-ai/dsh-client-ui-sidebar-right",
+        "@deepseek-ai/dsh-client-ui-model-selection"
       ]
     }
   },
   "scripts": {
     "test": "node --test test/*.test.mjs",
-    "prepublishOnly": "npm test"
+    "prepublishOnly": "npm test",
+    "release": "bash scripts/publish-npm.sh"
   },
   "peerDependencies": {
     "@deepseek-ai/cordis": "^4.0.1"
@@ -60,6 +63,9 @@
     "deepseek-harness",
     "plugin",
     "prediction",
+    "session-recap",
+    "turn-recap",
+    "side-question",
     "reply-style",
     "web-ui",
     "productivity",
