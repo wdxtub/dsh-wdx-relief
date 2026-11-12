@@ -4,7 +4,8 @@
  * 六件事：
  * 1. 注册认证路由 `POST /api/wdx-relief/predict`，按会话日志生成「下一句输入」；
  * 2. 注册认证路由 `POST /api/wdx-relief/recap`，按最近一轮生成「现在到哪」；
- * 3. 注册认证路由 `POST /api/wdx-relief/today`，整理「用户还没接住的事」；
+ * 3. 注册认证路由 `POST /api/wdx-relief/today`，整理「用户还没跟进的事」；
+ *    `POST /api/wdx-relief/today/dismiss`、`.../restore` 记录面板里清掉 / 撤销的条目；
  *    `POST /api/wdx-relief/recaps` 读取某会话生成过的回顾历史；
  * 4. 注册认证路由 `POST /api/wdx-relief/btw`，回答右侧面板里的旁问；
  * 5. 把所有设置暴露成 volatile Config，供设置页读写并即时生效；
@@ -18,6 +19,7 @@ import Schema from '@deepseek-ai/schemastery'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createBtwService } from './src/btw.js'
+import { createFollowupStore } from './src/followups.js'
 import { createPredictionService } from './src/prediction.js'
 import { createRecapService } from './src/recap.js'
 import { createRecapHistory } from './src/recapHistory.js'
@@ -34,6 +36,8 @@ export const RECAP_PATH = '/api/wdx-relief/recap'
 export const TODAY_PATH = '/api/wdx-relief/today'
 export const RECAPS_PATH = '/api/wdx-relief/recaps'
 export const BTW_PATH = '/api/wdx-relief/btw'
+export const DISMISS_PATH = '/api/wdx-relief/today/dismiss'
+export const RESTORE_PATH = '/api/wdx-relief/today/restore'
 
 export const Config = Schema.object({
   enabled: Schema.boolean()
@@ -83,7 +87,7 @@ export const Config = Schema.object({
   today: Schema.boolean()
     .default(true)
     .volatile()
-    .description('把过去会话里「提醒过你但你没接住」的事整理成一小份清单'),
+    .description('把过去会话里「提醒过你但你没跟进」的事整理成一小份清单'),
   verbosity: Schema.union(VERBOSITY_VALUES)
     .default('low')
     .volatile()
@@ -187,6 +191,11 @@ export function apply(ctx, config) {
     log,
   })
 
+  const followupStore = createFollowupStore({
+    file: join(dshHome, 'wdx-relief', 'followups.json'),
+    log,
+  })
+
   const recapService = createRecapService({
     config,
     sessions: ctx.sessions,
@@ -202,6 +211,7 @@ export function apply(ctx, config) {
     sessionQuery: () => ctx.get('sessionQuery'),
     llm: () => ctx.get('llm'),
     defaultSelection,
+    dismissals: followupStore,
     log,
   })
 
@@ -259,6 +269,32 @@ export function apply(ctx, config) {
       requestBody: 'buffered',
       fetch: (request) => handleRequest(request, (sessionId, signal) => todayService.list(sessionId, signal, { force: request.headers.get('x-wdx-force') === '1' })),
     })
+    const disposeDismiss = ctx.connection.fetch.register({
+      path: DISMISS_PATH,
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: (request) => handleRequest(request, (sessionId, signal, body) => {
+        if (typeof sessionId !== 'string' || sessionId === '') {
+          const error = new Error('sessionId is required')
+          error.code = 'invalid-params'
+          throw error
+        }
+        return { changed: followupStore.dismiss(sessionId, body.text) }
+      }),
+    })
+    const disposeRestore = ctx.connection.fetch.register({
+      path: RESTORE_PATH,
+      methods: ['POST'],
+      requestBody: 'buffered',
+      fetch: (request) => handleRequest(request, (sessionId, signal, body) => {
+        if (typeof sessionId !== 'string' || sessionId === '') {
+          const error = new Error('sessionId is required')
+          error.code = 'invalid-params'
+          throw error
+        }
+        return { changed: followupStore.restore(sessionId, body.text) }
+      }),
+    })
     const disposeBtw = ctx.connection.fetch.register({
       path: BTW_PATH,
       methods: ['POST'],
@@ -270,8 +306,10 @@ export function apply(ctx, config) {
       void disposeRecap()
       void disposeRecaps()
       void disposeToday()
+      void disposeDismiss()
+      void disposeRestore()
       void disposeBtw()
     }
-  }, 'wdx-relief: prediction, recap, today and btw routes')
-  console.log(`[wdx-relief] 路由已注册：${ROUTE_PATH}、${RECAP_PATH}、${RECAPS_PATH}、${TODAY_PATH}、${BTW_PATH}`)
+  }, 'wdx-relief: prediction, recap, today, followup and btw routes')
+  console.log(`[wdx-relief] 路由已注册：${ROUTE_PATH}、${RECAP_PATH}、${RECAPS_PATH}、${TODAY_PATH}、${DISMISS_PATH}、${RESTORE_PATH}、${BTW_PATH}`)
 }

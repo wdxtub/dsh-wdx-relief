@@ -13,6 +13,8 @@ import {
   resolveModelCandidates,
   sanitizeSummary,
   similarity,
+  trimUnfinished,
+  unfinishedEnding,
 } from '../src/recap.js'
 
 function fakeStream(text) {
@@ -344,4 +346,76 @@ test('degraded summaries are not cached and retried on the next turn', async () 
   const second = await service.recap('s1')
   assert.equal(second.degraded, true)
   assert.ok(attempts > afterFirst)
+})
+
+test('unfinishedEnding flags half sentences but keeps complete one-liners', () => {
+  assert.equal(unfinishedEnding('解释 QIG；已说明其为临时自造缩写，表前缀已替换，待'), true)
+  assert.equal(unfinishedEnding('正在读文件，'), true)
+  assert.equal(unfinishedEnding('修测试，已修好'), false)
+  assert.equal(unfinishedEnding('发布 0.4.0，待确认'), false)
+  assert.equal(unfinishedEnding('改完了。'), false)
+  assert.equal(unfinishedEnding('好了'), false)
+  assert.equal(unfinishedEnding(''), false)
+})
+
+test('trimUnfinished cuts at the last clause boundary', () => {
+  assert.equal(trimUnfinished('解释 QIG；表前缀已替换，待'), '解释 QIG；表前缀已替换…')
+  assert.equal(trimUnfinished('没有边界'), '没有边界')
+  assert.equal(trimUnfinished(''), '')
+})
+
+test('generateSummary retries once when the model stops mid-sentence', async () => {
+  const calls = []
+  const llm = {
+    stream() {
+      calls.push(1)
+      return fakeStream(calls.length === 1 ? '确认改名并替换表前缀，待' : '确认改名并替换表前缀，待你拍板')
+    },
+  }
+  const result = await generateSummary({
+    llm,
+    defaultSelection: () => ({ provider: 'p', model: 'fast' }),
+    recap: { user: '改名', assistant: '待确认', question: null },
+    maxWords: 40,
+  })
+  assert.equal(calls.length, 2)
+  assert.equal(result.text, '确认改名并替换表前缀，待你拍板')
+})
+
+test('generateSummary fragments the sentence when retries also stop mid-way', async () => {
+  const calls = []
+  const llm = {
+    stream() {
+      calls.push(1)
+      return fakeStream('确认改名并替换表前缀，待')
+    },
+  }
+  const result = await generateSummary({
+    llm,
+    defaultSelection: () => ({ provider: 'p', model: 'fast' }),
+    recap: { user: '改名', assistant: '待确认', question: null },
+    maxWords: 40,
+  })
+  assert.equal(calls.length, 2)
+  assert.equal(result.text, '确认改名并替换表前缀…')
+})
+
+test('generateSummary rejects a stream that never finishes', async () => {
+  let calls = 0
+  const llm = {
+    stream() {
+      calls += 1
+      return (async function* () {
+        yield { type: 'text-delta', text: '只有半句' }
+      })()
+    },
+  }
+  const result = await generateSummary({
+    llm,
+    defaultSelection: () => ({ provider: 'p', model: 'fast' }),
+    recap: { user: '改名', assistant: '待确认', question: null },
+    maxWords: 40,
+  })
+  assert.equal(calls, 1)
+  assert.equal(result, null)
 })

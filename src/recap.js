@@ -234,6 +234,35 @@ export function sanitizeSummary(raw, maxWords = DEFAULT_MAX_WORDS) {
   return limitWords(text, Math.min(maxWords, MAX_SUMMARY_CHARS))
 }
 
+const ENDING_PUNCT = /[。！？!?…．.」』”’）)】\]]$/u
+const TRAILING_CONNECTOR = /[，,、；;：:（(【「『—\-～~]$/u
+const CLAUSE_SPLIT = /[，,；;：:、。！？!?…]/u
+
+/**
+ * 模型有时会吐半句就停（例如「…表前缀已替换，待」）。这种结尾不能直接上线：
+ * 判断标准是「没有句末标点，且最后一个分句只剩 1-2 个字」，或者停在连接符上。
+ */
+export function unfinishedEnding(value) {
+  const text = String(value ?? '').trim()
+  if (text === '') return false
+  if (ENDING_PUNCT.test(text)) return false
+  if (TRAILING_CONNECTOR.test(text)) return true
+  const clauses = text.split(CLAUSE_SPLIT)
+  if (clauses.length < 2) return false
+  const tail = clauses[clauses.length - 1].trim()
+  return tail !== '' && tail.length <= 2
+}
+
+/** 重试也没拿到完整结尾时，退到最后一个分句边界，别让面板停在半个词上。 */
+export function trimUnfinished(value) {
+  const text = String(value ?? '').trim()
+  if (text === '') return ''
+  const boundaries = ['，', ',', '；', ';', '：', ':', '、']
+  const cut = Math.max(...boundaries.map((mark) => text.lastIndexOf(mark)))
+  if (cut <= 0) return text
+  return `${text.slice(0, cut)}…`
+}
+
 /** 摘要只需要最近一轮，不把整个会话塞进 prompt。 */
 export function buildSummaryPrompt(recap) {
   const lines = [`用户：${clip(recap.user, MAX_SUMMARY_INPUT_USER)}`]
@@ -400,6 +429,7 @@ async function streamOnce({ service, candidate, recap, maxWords, signal, timeout
     else signal.addEventListener('abort', onAbort, { once: true })
   }
   let text = ''
+  let finished = false
   try {
     const stream = service.stream({
       provider: candidate.provider,
@@ -413,6 +443,7 @@ async function streamOnce({ service, candidate, recap, maxWords, signal, timeout
     for await (const chunk of stream) {
       if (chunk.type === 'text-delta' && typeof chunk.text === 'string') text += chunk.text
       if (chunk.type === 'finish') {
+        finished = true
         const kind = chunk.reason && chunk.reason.kind
         if (kind === 'error' || kind === 'aborted') {
           const failure = chunk.reason && chunk.reason.failure
@@ -425,6 +456,7 @@ async function streamOnce({ service, candidate, recap, maxWords, signal, timeout
     clearTimeout(timer)
     if (signal) signal.removeEventListener('abort', onAbort)
   }
+  if (!finished) throw new Error('model stream ended without finish')
   const cleaned = sanitizeSummary(text, maxWords)
   if (cleaned === '') throw new Error('empty model output')
   return cleaned
@@ -440,16 +472,30 @@ export async function generateSummary({ llm, defaultSelection, recap, chain, max
   const candidates = await resolveModelCandidates({ llm: service, defaultSelection, chain })
   // 整条链共享 15 秒预算：便宜模型失败时快速换下一个，不让这一行拖住。
   const deadline = Date.now() + 15000
+  let salvage = null
   for (const candidate of candidates) {
     if (signal && signal.aborted) return null
-    const remaining = deadline - Date.now()
-    if (remaining <= 0) break
-    try {
-      const text = await streamOnce({ service, candidate, recap, maxWords, signal, timeoutMs: Math.min(timeoutMs, remaining) })
-      return { text, provider: candidate.provider, model: candidate.model }
-    } catch (error) {
-      log(`[wdx-relief] recap model ${candidate.provider}/${candidate.model} failed`, error)
+    for (let attempt = 0; attempt < 2; attempt += 1) {
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) break
+      try {
+        const text = await streamOnce({ service, candidate, recap, maxWords, signal, timeoutMs: Math.min(timeoutMs, remaining) })
+        if (unfinishedEnding(text)) {
+          // 模型写了半句就停（「…表前缀已替换，待」）：先在同一模型上重试一次。
+          log(`[wdx-relief] recap model ${candidate.provider}/${candidate.model} returned a half sentence`)
+          salvage = { text, provider: candidate.provider, model: candidate.model }
+          continue
+        }
+        return { text, provider: candidate.provider, model: candidate.model }
+      } catch (error) {
+        log(`[wdx-relief] recap model ${candidate.provider}/${candidate.model} failed`, error)
+        break
+      }
     }
+  }
+  if (salvage !== null) {
+    const text = trimUnfinished(salvage.text)
+    if (text !== '') return { ...salvage, text }
   }
   return null
 }

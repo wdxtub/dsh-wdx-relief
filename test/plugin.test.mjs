@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runInNewContext } from 'node:vm'
 
-import { BTW_PATH, Config, RECAP_PATH, RECAPS_PATH, ROUTE_PATH, TODAY_PATH, apply, inject, name } from '../index.js'
+import { BTW_PATH, Config, DISMISS_PATH, RECAP_PATH, RECAPS_PATH, RESTORE_PATH, ROUTE_PATH, TODAY_PATH, apply, inject, name } from '../index.js'
 
 // apply() 把回顾历史写进 $DSH_HOME；测试用临时目录，避免污染真实 home。
 process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'wdx-relief-test-'))
@@ -122,6 +122,37 @@ test('today route degrades to unavailable without a session query service', asyn
   const response = await route.fetch(request({ sessionId: 'session-1' }, TODAY_PATH))
   assert.equal(response.status, 200)
   assert.deepEqual(await response.json(), { ok: true, data: { items: [], unavailable: true } })
+})
+
+test('dismiss and restore routes record cleared follow-ups', async () => {
+  const host = createHostContext()
+  apply(host.ctx, { today: { get: () => true } })
+
+  const dismiss = host.route(DISMISS_PATH)
+  assert.equal(dismiss.path, DISMISS_PATH)
+  assert.deepEqual(dismiss.methods, ['POST'])
+
+  const cleared = await dismiss.fetch(request({ sessionId: 'session-1', text: '把 tag 推到远端' }, DISMISS_PATH))
+  assert.equal(cleared.status, 200)
+  assert.deepEqual(await cleared.json(), { ok: true, data: { changed: true } })
+
+  const again = await dismiss.fetch(request({ sessionId: 'session-1', text: '把 tag 推到远端' }, DISMISS_PATH))
+  assert.deepEqual(await again.json(), { ok: true, data: { changed: false } })
+
+  const stored = JSON.parse(readFileSync(join(process.env.DSH_HOME, 'wdx-relief', 'followups.json'), 'utf8'))
+  assert.equal(stored.entries.length, 1)
+  assert.equal(stored.entries[0].text, '把 tag 推到远端')
+
+  const restore = host.route(RESTORE_PATH)
+  const restored = await restore.fetch(request({ sessionId: 'session-1', text: '把 tag 推到远端' }, RESTORE_PATH))
+  assert.deepEqual(await restored.json(), { ok: true, data: { changed: true } })
+
+  const empty = await restore.fetch(request({ sessionId: 'session-1', text: '把 tag 推到远端' }, RESTORE_PATH))
+  assert.deepEqual(await empty.json(), { ok: true, data: { changed: false } })
+
+  const invalid = await dismiss.fetch(request({ text: '把 tag 推到远端' }, DISMISS_PATH))
+  assert.equal(invalid.status, 400)
+  assert.equal((await invalid.json()).ok, false)
 })
 
 test('host route returns a prediction and then serves it from cache', async () => {
@@ -552,6 +583,52 @@ test('relief panel renders ready items without a missing helper', () => {
   const json = JSON.stringify(panel)
   assert.match(json, /需要你确认/)
   assert.match(json, /3 小时/)
+  assert.match(json, /wdxp-follow/)
+  assert.match(json, /wdxp-clear/)
+  assert.match(json, /清掉，不再出现在列表里/)
+  assert.doesNotMatch(json, /wdxp-undo/)
+})
+
+test('relief panel offers undo after an item is cleared', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+
+  let stateCalls = 0
+  const react = {
+    createElement(type, props, ...children) { return { type, props, children } },
+    useState(initial) {
+      stateCalls += 1
+      if (stateCalls === 2) {
+        return [{
+          status: 'empty',
+          items: [],
+          degraded: false,
+          detail: '',
+          lastCleared: { text: '需要你确认', sessionId: 'session-1' },
+          clearError: '',
+        }, () => {}]
+      }
+      return [initial, () => {}]
+    },
+    useEffect() {},
+    useRef() { return { current: null } },
+    useLayoutEffect() {},
+  }
+  const client = loaded.factory((id) => {
+    if (id === 'react') return react
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+
+  const t = (key) => key
+  const panel = client.ReliefPanel({ sessionId: 'session-1', t, openSession() {} })
+  const json = JSON.stringify(panel)
+  assert.match(json, /wdxp-undo/)
+  assert.match(json, /已清掉这条/)
+  assert.match(json, /撤销/)
+  assert.match(json, /最近两周没有待你决定的事/)
 })
 
 test('accepting a prediction does not permanently dismiss it', () => {

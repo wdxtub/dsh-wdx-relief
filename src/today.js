@@ -1,10 +1,10 @@
 /**
- * 今日：把「用户还没接住的事」从过去会话里捞出来。
+ * 今日：把「用户还没跟进的事」从过去会话里捞出来。
  *
  * 设计约束：
  * - 只取每个空闲会话的最后一条助手消息（尾部 ≤800 字），不扫全文；
  * - 确定性部分只做筛选（工作区、时间窗、空闲时长、最后一条是助手），
- *   是否算「还没接住」交给一次模型调用判断；
+ *   是否算「还没跟进」交给一次模型调用判断；
  * - 结果按工作区 + 会话集合缓存，模型调用不写会话、不触发 agent loop。
  */
 
@@ -21,7 +21,7 @@ export const MODEL_TIMEOUT_MS = 30000
 export const MAX_OUTPUT_TOKENS = 900
 
 export const SYSTEM_PROMPT = [
-  '你在整理「用户还没接住的事」。输入是过去几个会话里，助手最后一条消息的尾部片段。',
+  '你在整理「用户还没跟进的事」。输入是过去几个会话里，助手最后一条消息的尾部片段。',
   '只挑出需要用户本人做、但用户此后没有回应的事：',
   '- 要用户决定、授权、确认的事，例如部署、推送、发版、重启、两个方案二选一；',
   '- 助手提问后用户没有再回答的问题；',
@@ -280,6 +280,7 @@ export function createTodayService({
   sessionQuery,
   llm,
   defaultSelection,
+  dismissals = null,
   log = () => {},
   now = () => Date.now(),
 }) {
@@ -308,9 +309,16 @@ export function createTodayService({
     return typeof recordCwd === 'string' && recordCwd !== '' ? recordCwd : null
   }
 
+  /** 已清掉的条目在这里过滤，缓存里始终保留模型原样输出。 */
+  function present(items, extra = {}) {
+    if (!dismissals || typeof dismissals.filter !== 'function') return { items, ...extra }
+    const shown = dismissals.filter(items)
+    return { items: shown.items, hidden: shown.hidden, ...extra }
+  }
+
   return {
     /**
-     * 返回 { items, scanned, cached?, disabled?, unavailable? }。
+     * 返回 { items, hidden?, scanned, cached?, disabled?, unavailable? }。
      * 业务失败抛错，由 HTTP 层转成 ok:false。
      */
     /**
@@ -346,7 +354,7 @@ export function createTodayService({
       }
 
       if (candidates.length === 0) return { items: [], scanned: 0 }
-      // 会话列表按创建时间取候选，但「最近没接住的事」应按最后活动时间排；
+      // 会话列表按创建时间取候选，但「最近待跟进的事」应按最后活动时间排；
       // 老会话被重新打开时，创建时间会把它排到后面。
       candidates.sort((left, right) => right.lastTime - left.lastTime)
       candidates.splice(MAX_SESSIONS)
@@ -354,7 +362,7 @@ export function createTodayService({
       const key = `${cwd}\u0000${candidates.map((c) => `${c.sessionId}:${c.lastTime}`).join(',')}`
       const hit = cache.get(cwd)
       if (!options.force && hit && hit.key === key && at - hit.at < CACHE_TTL_MS) {
-        return { items: hit.items, scanned: candidates.length, cached: true, ...(hit.degraded ? { degraded: true, detail: hit.detail } : {}) }
+        return present(hit.items, { scanned: candidates.length, cached: true, ...(hit.degraded ? { degraded: true, detail: hit.detail } : {}) })
       }
 
       let items = []
@@ -375,7 +383,7 @@ export function createTodayService({
         items = pickFallbackItems(candidates)
       }
       cache.set(cwd, { at, key, items, degraded, detail })
-      return { items, scanned: candidates.length, ...(degraded ? { degraded, detail } : {}) }
+      return present(items, { scanned: candidates.length, ...(degraded ? { degraded, detail } : {}) })
     },
 
     clear() {

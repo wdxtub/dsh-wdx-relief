@@ -41,7 +41,7 @@ HMR 生效。
 | `recapSimilarityThreshold` | `0.7` | 新旧摘要相似度达到这个值就沿用旧的一行 |
 | `recapMaxWords` | `40` | 摘要词预算；中文按字算 |
 | `recapModelChain` | `''` | 摘要模型链，按顺序尝试 `provider/model`；留空自动挑便宜模型 |
-| `today` | `true` | 右侧栏 WDX Relief 页面里的「没接住的事」清单 |
+| `today` | `true` | 右侧栏 WDX Relief 页面里的「待跟进」清单 |
 | `verbosity` | `low` | `low` / `medium` / `high`（旧值 `model` 仍兼容） |
 | `actionable` | `true` | 便于行动：先结果/下一步、白话解释术语、保留风险 |
 | `style` | `default` | `default` / `professional` / `friendly` / `blunt` / `follow` |
@@ -101,7 +101,10 @@ bundle 层只声明入口和输入层的开关，其余字段由 schema 默认�
    `haiku` 等词的模型，最后退回 `agentDefaultModel.currentSelection()`。某个模型失败（凭据缺失、
    限流、截断）会继续试下一个；全部失败时退回「要求 · 结果」的本地短拼接，并在响应里带
    `degraded: true`。
-5. 摘要按轮次内容缓存；同一条 `(turn, user, assistant, question)` 只生成一次。
+5. 模型写了半句就停时（没有句末标点，且最后一个分句只剩 1-2 个字，例如
+   `…表前缀已替换，待`），先在同一模型上重试一次；仍不完整就截到最后一个分句边界并补省略号。
+   流式响应没有 `finish` 事件也按失败处理，继续试下一个模型或退回本地拼接，避免把半句留在面板上。
+6. 摘要按轮次内容缓存；同一条 `(turn, user, assistant, question)` 只生成一次。
    真正生成的新摘要追加到 `$DSH_HOME/wdx-relief/recaps.json`（最多 300 条），
    右侧 WDX Relief 页面的「会话回顾」Tab 通过 `POST /api/wdx-relief/recaps` 读取；
    Tab 顶部显示条数，可「清空」当前会话的历史（body 带 `clear: true`）。
@@ -112,7 +115,7 @@ bundle 层只声明入口和输入层的开关，其余字段由 schema 默认�
 
 ## 旁问
 
-旁问不再是 composer 命令，而是右侧栏 WDX Relief 页面的「旁问」Tab；默认 Tab 是「没接住的事」。
+旁问不再是 composer 命令，而是右侧栏 WDX Relief 页面的「旁问」Tab；默认 Tab 是「待跟进」。
 
 - 输入框和 composer 使用同一套视觉：圆角卡片、底部模型位、右侧圆形发送/停止按钮。按 <kbd>⌘/Ctrl + Enter</kbd> 也可以发送。
 - 底部模型位来自会话级模型目录（`ctx.modelDirectories`）。默认跟随当前会话模型；选中别的模型只影响这次旁问，**不会改变主会话模型**。宽度不够时模型名收成数据图标，只保留图标和下拉箭头。
@@ -126,9 +129,9 @@ bundle 层只声明入口和输入层的开关，其余字段由 schema 默认�
 
 ## 右侧栏 WDX Relief 页面
 
-插件在右侧栏注册一个独立页面（`sidebarRightTabs.register`，`kind: wdx-relief`），入口和 WDX Git 一样出现在右侧栏的工具列表（`guide.order 35`）。页面用三个 Tab：默认「没接住的事」、「会话回顾」、「旁问」；后续小功能继续加 Tab，不平铺。
+插件在右侧栏注册一个独立页面（`sidebarRightTabs.register`，`kind: wdx-relief`），入口和 WDX Git 一样出现在右侧栏的工具列表（`guide.order 35`）。页面用三个 Tab：默认「待跟进」、「会话回顾」、「旁问」；后续小功能继续加 Tab，不平铺。
 
-### 没接住的事
+### 待跟进的事
 
 目标：把过去会话里「助手提醒过你、但你之后没有回应」的事整理成清单。
 
@@ -142,6 +145,13 @@ bundle 层只声明入口和输入层的开关，其余字段由 schema 默认�
 - 当前会话的 `cwd` 先取 live 会话，取不到再从会话列表里找，避免刚恢复的历史会话打不开。
 - 依赖 `ctx.sessionQuery`（base profile 已挂 `session-query-sqlite`）；缺失时显示「无法整理」。
 - 点条目用 `uiWorkspace.openSession()` 跳回原会话。
+- 每条右侧的「×」是**清掉**：记进 `$DSH_HOME/wdx-relief/followups.json`，之后不再出现在清单里，
+  旁边留一个「撤销」可放回。清掉只作用于面板，不删会话里的任何内容。
+- 去重口径是「会话 + 归一化文本」：标点、空白、大小写不参与比对；同一会话里模型换个说法（相似度 ≥0.6）
+  也算同一条，但英文词和数字必须一致，`PR #12` / `PR #13`、`v0.4.0` / `v0.5.0` 不会被合并。
+- 清掉 / 撤销分别走 `POST /api/wdx-relief/today/dismiss`、`POST .../restore`，返回 `{ changed }`；
+  清掉清单最多留 200 条，超出丢最旧的。
+- 过滤发生在返回前，服务端的模型结果缓存始终保留原样，所以清掉一条不会触发重新整理。
 
 ## 回复风格
 
@@ -186,7 +196,7 @@ Host 在 `ctx.systemPrompt` 注册：
 
 - Host 日志出现 `POST /api/wdx-relief/recap`、`POST /api/wdx-relief/today` 与 `POST /api/wdx-relief/btw` 注册；
 - 客户端注册面新增 `conversation.input.dock` / `conversation.composer.dock` 的 `wdx-turn-line-*` 与右侧栏 `sidebar.right.pane.tab` 的 `wdx-relief` 页面；
-- 旁问面板默认展示「没接住的事」Tab，模型位读取 `ctx.modelDirectories`，选中只影响旁问；
+- 旁问面板默认展示「待跟进」Tab，模型位读取 `ctx.modelDirectories`，选中只影响旁问；
 - `node --test` 覆盖回顾提取 / minTurns / cooldown / 相似度门限 / 模型链、旁问提示词/回答/错误/模型覆盖、今日清单、客户端事件推导与注册面；
 - 浏览器内实际轮次切换、两种 placement、旁问 Tab 与 Markdown 渲染尚未在本次会话中用浏览器控制复核。
 

@@ -2,7 +2,7 @@
  * dsh-wdx-relief 网页客户端。
  *
  * 四块 UI：
- * 1. 右侧栏 WDX Relief 页面：默认「没接住的事」，另一个 Tab 是「旁问」。
+ * 1. 右侧栏 WDX Relief 页面：默认「待跟进的事」，另一个 Tab 是「旁问」。
  * 2. `conversation.input.overlay`：在输入框里显示「下一句消息」灰字预测，
  *    Tab 填入（Codex 式），点击也可以填入。
  * 3. `conversation.input.dock` / `conversation.composer.dock`：输入框上方或下方的一行，
@@ -40,6 +40,8 @@ window.__ModuleLoader__.load({
     var TODAY_PATH = '/api/wdx-relief/today'
     var RECAPS_PATH = '/api/wdx-relief/recaps'
     var BTW_PATH = '/api/wdx-relief/btw'
+    var DISMISS_PATH = '/api/wdx-relief/today/dismiss'
+    var RESTORE_PATH = '/api/wdx-relief/today/restore'
     var RECAP_PLACEMENTS = ['above', 'below']
     var MAX_CUSTOM_CHARS = 2000
     var SWITCH = primitives && primitives.Switch
@@ -143,13 +145,20 @@ window.__ModuleLoader__.load({
       '.wdxp-iconBtn:disabled{opacity:.5;cursor:default}',
       '.wdxp-body{min-width:0}',
       '.wdxp-rows{flex-direction:column;gap:8px;display:flex}',
-      '.wdxp-list{flex-direction:column;gap:2px;margin:0;padding:0;list-style:none;display:flex}',
+      '.wdxp-list{flex-direction:column;gap:4px;margin:0;padding:0;list-style:none;display:flex}',
       '.wdxp-item{min-width:0;flex-direction:column;gap:2px;margin:0;padding:0;display:flex}',
       '.wdxp-row{box-sizing:border-box;width:100%;border:0;border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);color:inherit;font:inherit;text-align:left;cursor:pointer;align-items:flex-start;gap:10px;padding:8px 10px;display:flex}',
       '@media (hover:hover){.wdxp-row:hover{background:var(--dsw-alias-interactive-bg-hover)}}',
       '.wdxp-row:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:-1px}',
       '.wdxp-rowText{overflow-wrap:anywhere;white-space:normal;flex:1;min-width:0;font-size:13px;line-height:19px}',
       '.wdxp-rowMeta{color:var(--dsw-alias-label-caption);white-space:nowrap;font-variant-numeric:tabular-nums;flex:none;font-size:11px;line-height:19px}',
+      '.wdxp-follow{position:relative}',
+      '.wdxp-follow .wdxp-row{padding:9px 34px 9px 12px;transition:background-color .12s ease}',
+      '.wdxp-clear{position:absolute;right:6px;top:50%;width:22px;height:22px;color:var(--dsw-alias-label-caption);cursor:pointer;background:0 0;border:0;border-radius:var(--dsw-radius-sm);place-items:center;opacity:.55;padding:0;display:grid;transform:translateY(-50%);transition:opacity .12s ease,color .12s ease,background-color .12s ease}',
+      '.wdxp-follow:hover .wdxp-clear,.wdxp-follow:focus-within .wdxp-clear{opacity:1}',
+      '@media (hover:hover){.wdxp-clear:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}}',
+      '.wdxp-clear:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:1px}',
+      '.wdxp-undo{box-sizing:border-box;width:100%;align-items:center;justify-content:space-between;gap:10px;margin-top:4px;padding:6px 12px;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;display:flex}',
       '.wdxp-note{color:var(--dsw-alias-label-tertiary);align-items:center;gap:6px;margin:2px 0 0;font-size:12px;line-height:18px;display:flex}',
       '.wdxp-link{color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;padding:0;font:inherit;font-size:12px;line-height:18px;text-decoration:underline}',
       '@media (hover:hover){.wdxp-link:hover{color:var(--dsw-alias-label-primary)}}',
@@ -228,7 +237,7 @@ window.__ModuleLoader__.load({
       'settings.recapModelChain.description': '按顺序尝试 provider/model；留空自动挑便宜模型，全部失败退回当前默认模型',
       'settings.recapModelChain.placeholder': 'deepseek-v4-flash, deepseek-chat',
       'settings.btwHint': '提示：右侧 WDX Relief 面板的「旁问」Tab 可以直接问当前模型，底部可以选旁问模型；问答不会进入主上下文。',
-      'settings.summary': '预测下一句，输入框上给一行进度；右侧面板整理没接住的事、回看历史摘要，并可旁问且不污染上下文。',
+      'settings.summary': '预测下一句，输入框上给一行进度；右侧面板整理待跟进的事、回看历史摘要，并可旁问且不污染上下文。',
       'turn.reasoning': '思考',
       'turn.pending': '还没回复',
       'turn.dismiss': '收起这一行',
@@ -246,10 +255,10 @@ window.__ModuleLoader__.load({
       'turn.verb.ask': '等你回答',
       'turn.verb.skill': '加载技能',
       'turn.verb.other': '调用',
-      'settings.today.title': '整理没接住的事',
+      'settings.today.title': '整理待跟进的事',
       'settings.today.description': '把过去会话里提醒过你、但你还没处理的事整理成一小份清单',
       'panel.title': 'WDX Relief',
-      'panel.guide': '整理没接住的事，也可以随手旁问',
+      'panel.guide': '整理待跟进的事，也可以随手旁问',
       'panel.refresh': '刷新',
       'panel.retry': '重试',
       'panel.empty': '最近两周没有待你决定的事',
@@ -257,7 +266,13 @@ window.__ModuleLoader__.load({
       'panel.error': '整理失败，稍后再试。',
       'panel.degraded': '模型没整理成功，这份是按关键词挑的',
       'panel.ageShort': '{hours} 小时',
-      'section.untouched': '没接住的事',
+      'section.untouched': '待跟进',
+      'panel.clear': '清掉',
+      'panel.clearLabel': '清掉，不再出现在列表里',
+      'panel.cleared': '已清掉这条',
+      'panel.undo': '撤销',
+      'panel.clearFailed': '没清掉，再试一次',
+      'panel.emptyCleared': '最近的事都清掉了',
       'section.recaps': '会话回顾',
       'panel.recapEmpty': '还没有生成过摘要；聊到第三轮就会出现第一条',
       'panel.recapError': '回顾历史读取失败',
@@ -365,10 +380,10 @@ window.__ModuleLoader__.load({
       'turn.verb.ask': 'Waiting on you',
       'turn.verb.skill': 'Load skill',
       'turn.verb.other': 'Call',
-      'settings.today.title': 'Collect what you never answered',
-      'settings.today.description': 'Turn reminders from past sessions that you never handled into a short list',
+      'settings.today.title': 'Collect your follow-ups',
+      'settings.today.description': 'Turn reminders from past sessions that you have not followed up on into a short list',
       'panel.title': 'WDX Relief',
-      'panel.guide': 'Collect the reminders you never got back to, and ask aside',
+      'panel.guide': 'Collect the follow-ups you dropped, and ask aside',
       'panel.refresh': 'Refresh',
       'panel.retry': 'Retry',
       'panel.empty': 'Nothing waiting on you in the last two weeks',
@@ -376,7 +391,13 @@ window.__ModuleLoader__.load({
       'panel.error': 'Could not collect; try again later.',
       'panel.degraded': 'The model did not finish; this list is keyword-picked',
       'panel.ageShort': '{hours}h',
-      'section.untouched': 'Never answered',
+      'section.untouched': 'Follow-ups',
+      'panel.clear': 'Clear',
+      'panel.clearLabel': 'Clear, do not show again',
+      'panel.cleared': 'Cleared',
+      'panel.undo': 'Undo',
+      'panel.clearFailed': 'Could not clear; try again',
+      'panel.emptyCleared': 'Everything recent has been cleared',
       'section.recaps': 'Recaps',
       'panel.recapEmpty': 'No summary yet; one will appear after the third turn',
       'panel.recapError': 'Could not read recap history',
@@ -481,7 +502,7 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * 一次「没接住的事」RPC。
+     * 一次「待跟进的事」RPC。
      * 返回 { items } / { unavailable } / { disabled }；网络或服务失败返回 { error }。
      */
     async function requestToday(sessionId, signal, force) {
@@ -528,7 +549,39 @@ window.__ModuleLoader__.load({
         }),
         degraded: data.degraded === true,
         detail: typeof data.detail === 'string' ? data.detail : '',
+        hidden: typeof data.hidden === 'number' ? data.hidden : 0,
       }
+    }
+
+    /**
+     * 记录 / 撤销「清掉」：只动本地清掉清单，不删会话内容。
+     * 返回 { changed } 或 { error, message }。
+     */
+    async function requestFollowup(path, sessionId, text) {
+      var response
+      try {
+        response = await fetch(path, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ sessionId: sessionId, text: text }),
+        })
+      } catch (error) {
+        return { error: true, message: '请求失败：' + String((error && error.message) || error) }
+      }
+      var body = null
+      try {
+        body = await response.json()
+      } catch (error) {
+        return { error: true, message: 'HTTP ' + response.status + ' · 读取响应失败' }
+      }
+      if (!body || body.ok !== true) {
+        var failure = body && body.error ? body.error : {}
+        var detail = typeof failure.message === 'string' && failure.message !== '' ? failure.message : 'HTTP ' + response.status
+        return { error: true, message: detail }
+      }
+      var data = body.data || {}
+      return { changed: data.changed === true }
     }
 
     /**
@@ -1363,7 +1416,7 @@ window.__ModuleLoader__.load({
     /**
      * WDX Relief 的右侧栏页面。
      *
-     * 页面是插件所有小功能的容器：每个功能一个 section，目前只有「没接住的事」。
+     * 页面是插件所有小功能的容器：每个功能一个 section，目前只有「待跟进的事」。
      * 数据由 Host 侧 `/api/wdx-relief/today` 产生：只读会话尾部，一次模型调用做归并判断；
      * 模型失败时 Host 会退回关键词清单，并在响应里带 `degraded`，这里如实标注。
      */
@@ -1382,6 +1435,25 @@ window.__ModuleLoader__.load({
       }, [
         h('rect', { key: 'frame', x: 2.5, y: 2.5, width: 11, height: 11, rx: 2.5, stroke: 'currentColor', strokeWidth: 1.2 }),
         h('path', { key: 'lines', d: 'M5.2 6.1h5.6M5.2 8.3h5.6M5.2 10.5h3.4', stroke: 'currentColor', strokeWidth: 1.2, strokeLinecap: 'round' }),
+      ])
+    }
+
+    function ClearIcon() {
+      return h('svg', {
+        width: 12,
+        height: 12,
+        viewBox: '0 0 16 16',
+        fill: 'none',
+        'aria-hidden': 'true',
+        focusable: 'false',
+      }, [
+        h('path', {
+          key: 'cross',
+          d: 'M4 4l8 8M12 4l-8 8',
+          stroke: 'currentColor',
+          'stroke-width': 1.5,
+          'stroke-linecap': 'round',
+        }),
       ])
     }
 
@@ -1855,26 +1927,26 @@ window.__ModuleLoader__.load({
       var t = props.t
       var [tab, setTab] = useState('untouched')
 
-      var [state, setState] = useState({ status: 'loading', items: [], degraded: false, detail: '' })
+      var [state, setState] = useState({ status: 'loading', items: [], degraded: false, detail: '', lastCleared: null, clearError: '' })
       var controllerRef = useRef(null)
 
       function load(force) {
         if (!sessionId) {
-          setState({ status: 'empty', items: [], degraded: false, detail: '' })
+          setState({ status: 'empty', items: [], degraded: false, detail: '', lastCleared: null, clearError: '' })
           return
         }
         if (controllerRef.current) controllerRef.current.abort()
         var controller = new AbortController()
         controllerRef.current = controller
-        setState({ status: 'loading', items: [], degraded: false, detail: '' })
+        setState({ status: 'loading', items: [], degraded: false, detail: '', lastCleared: null, clearError: '' })
         requestToday(sessionId, controller.signal, force === true).then(function (result) {
           if (controller.signal.aborted) return
           if (result.error) {
-            setState({ status: 'error', items: [], degraded: false, detail: result.message || '' })
+            setState({ status: 'error', items: [], degraded: false, detail: result.message || '', lastCleared: null, clearError: '' })
             return
           }
           if (result.unavailable || result.disabled) {
-            setState({ status: 'unavailable', items: [], degraded: false, detail: '' })
+            setState({ status: 'unavailable', items: [], degraded: false, detail: '', lastCleared: null, clearError: '' })
             return
           }
           var items = result.items || []
@@ -1883,9 +1955,68 @@ window.__ModuleLoader__.load({
             items: items,
             degraded: result.degraded === true,
             detail: result.detail || '',
+            hidden: result.hidden || 0,
+            lastCleared: null,
+            clearError: '',
           })
         }).catch(function () {
           if (!controller.signal.aborted) setState({ status: 'error', items: [], degraded: false, detail: '' })
+        })
+      }
+
+      /** 清掉一条：先从本地列表移除，服务端失败时放回来。 */
+      function dismiss(item) {
+        if (!sessionId || !item || typeof item.text !== 'string' || item.text === '') return
+        var remaining = state.items.filter(function (other) {
+          return !(other.sessionId === item.sessionId && other.text === item.text)
+        })
+        var keep = { degraded: state.degraded, detail: state.detail }
+        setState({
+          status: remaining.length === 0 ? 'empty' : 'ready',
+          items: remaining,
+          degraded: keep.degraded,
+          detail: keep.detail,
+          lastCleared: item,
+          clearError: '',
+        })
+        requestFollowup(DISMISS_PATH, sessionId, item.text).then(function (result) {
+          if (!result.error) return
+          setState({
+            status: state.items.length === 0 ? 'empty' : 'ready',
+            items: state.items,
+            degraded: keep.degraded,
+            detail: keep.detail,
+            lastCleared: null,
+            clearError: result.message || '',
+          })
+        })
+      }
+
+      /** 撤销上一次清掉，然后按服务端结果重新取一次（缓存命中，不会重跑模型）。 */
+      function undo() {
+        var item = state.lastCleared
+        if (!sessionId || !item) return
+        setState({
+          status: state.status,
+          items: state.items,
+          degraded: state.degraded,
+          detail: state.detail,
+          lastCleared: null,
+          clearError: '',
+        })
+        requestFollowup(RESTORE_PATH, sessionId, item.text).then(function (result) {
+          if (result.error) {
+            setState({
+              status: state.status,
+              items: state.items,
+              degraded: state.degraded,
+              detail: state.detail,
+              lastCleared: item,
+              clearError: result.message || '',
+            })
+            return
+          }
+          load(false)
         })
       }
 
@@ -1897,6 +2028,16 @@ window.__ModuleLoader__.load({
       }, [sessionId])
 
       var count = state.items.length
+      var undoRow = state.lastCleared
+        ? h('div', { key: 'undo', className: 'wdxp-undo' }, [
+            h('span', { key: 'text' }, tr(t, 'panel.cleared', '已清掉这条')),
+            h('button', { key: 'undo', type: 'button', className: 'wdxp-link', onClick: undo }, tr(t, 'panel.undo', '撤销')),
+          ])
+        : null
+      var clearErrorRow = state.clearError
+        ? h('p', { key: 'clearError', className: 'wdxp-note', title: state.clearError },
+            tr(t, 'panel.clearFailed', '没清掉，再试一次'))
+        : null
       var body
       if (state.status === 'loading') {
         body = h('div', { key: 'skeleton', className: 'wdxp-skeleton' }, [
@@ -1920,11 +2061,18 @@ window.__ModuleLoader__.load({
           state.detail ? h('p', { key: 'detail', className: 'wdxp-degraded' }, state.detail) : null,
         ])
       } else if (state.status === 'empty') {
-        body = h('p', { key: 'empty', className: 'wdxp-note' }, tr(t, 'panel.empty', '最近两周没有待你决定的事'))
+        body = h('div', { key: 'empty', className: 'wdxp-rows' }, [
+          h('p', { key: 'note', className: 'wdxp-note' },
+            state.hidden > 0
+              ? tr(t, 'panel.emptyCleared', '最近的事都清掉了')
+              : tr(t, 'panel.empty', '最近两周没有待你决定的事')),
+          clearErrorRow,
+          undoRow,
+        ])
       } else {
         body = h('div', { key: 'rows', className: 'wdxp-rows' }, [
           h('ul', { key: 'list', className: 'wdxp-list' }, state.items.map(function (item, index) {
-            return h('li', { key: String(index), className: 'wdxp-item' }, [
+            return h('li', { key: String(index), className: 'wdxp-item wdxp-follow' }, [
               h('button', {
                 key: 'open',
                 type: 'button',
@@ -1937,8 +2085,18 @@ window.__ModuleLoader__.load({
                   ? h('span', { key: 'meta', className: 'wdxp-rowMeta' }, trf(t, 'panel.ageShort', { hours: item.idleHours }, item.idleHours + ' 小时'))
                   : null,
               ]),
+              h('button', {
+                key: 'clear',
+                type: 'button',
+                className: 'wdxp-clear',
+                title: tr(t, 'panel.clearLabel', '清掉，不再出现在列表里'),
+                'aria-label': tr(t, 'panel.clearLabel', '清掉，不再出现在列表里'),
+                onClick: function () { dismiss(item) },
+              }, h(ClearIcon, { key: 'icon' })),
             ])
           })),
+          clearErrorRow,
+          undoRow,
           state.degraded
             ? h('p', { key: 'degraded', className: 'wdxp-degraded', title: state.detail },
                 tr(t, 'panel.degraded', '模型没整理成功，这份是按关键词挑的'))
@@ -1963,7 +2121,7 @@ window.__ModuleLoader__.load({
             className: tabClass('untouched'),
             onClick: function () { setTab('untouched') },
           }, [
-            h('span', { key: 'label' }, tr(t, 'section.untouched', '没接住的事')),
+            h('span', { key: 'label' }, tr(t, 'section.untouched', '待跟进')),
             count > 0 ? h('span', { key: 'count', className: 'wdxp-tabCount' }, String(count)) : null,
           ]),
           h('button', {
@@ -2345,7 +2503,7 @@ window.__ModuleLoader__.load({
 
     function BundleSettingsPage(props) {
       var t = props.t
-      if (props.view === 'summary') return tr(t, 'settings.summary', '预测下一句，输入框上给一行进度；右侧面板整理没接住的事、回看历史摘要，并可旁问且不污染上下文。')
+      if (props.view === 'summary') return tr(t, 'settings.summary', '预测下一句，输入框上给一行进度；右侧面板整理待跟进的事、回看历史摘要，并可旁问且不污染上下文。')
 
       var useSettings = props.useSettings
       var advancedState = useState(false)
@@ -2436,7 +2594,7 @@ window.__ModuleLoader__.load({
             h(ToggleField, {
               key: 'today',
               t: t,
-              title: tr(t, 'settings.today.title', '整理没接住的事'),
+              title: tr(t, 'settings.today.title', '整理待跟进的事'),
               description: tr(t, 'settings.today.description', '把过去会话里提醒过你、但你还没处理的事整理成一小份清单'),
               field: todayField,
               disabled: disabled,

@@ -145,7 +145,7 @@ test('parseItems caps the number of items', () => {
   assert.equal(parseItems(raw, [{ sessionId: 's1', idleHours: 1 }]).length, MAX_ITEMS)
 })
 
-function makeService({ records, surfaces, reply, config } = {}) {
+function makeService({ records, surfaces, reply, config, dismissals } = {}) {
   const calls = []
   const service = createTodayService({
     config: config ?? { today: { get: () => true } },
@@ -162,6 +162,7 @@ function makeService({ records, surfaces, reply, config } = {}) {
       },
     },
     defaultSelection: () => ({ provider: 'p', model: 'm' }),
+    dismissals: dismissals ?? null,
     now: () => NOW,
   })
   return { service, calls }
@@ -261,4 +262,33 @@ test('today service stays quiet when disabled', async () => {
   const { service, calls } = makeService({ records, surfaces: surface, config: { today: { get: () => false } } })
   assert.deepEqual(await service.list('current'), { items: [], disabled: true })
   assert.equal(calls.length, 0)
+})
+
+test('today service hides cleared items, including from the cached result', async () => {
+  const cleared = []
+  const dismissals = {
+    filter(items) {
+      const kept = items.filter((item) => !cleared.some((entry) => entry.sessionId === item.sessionId && entry.text === item.text))
+      return { items: kept, hidden: items.length - kept.length }
+    },
+  }
+  const { service, calls } = makeService({
+    records,
+    surfaces: surface,
+    reply: '[{"i":1,"text":"确认发版"},{"i":2,"text":"推送 origin/main"}]',
+    dismissals,
+  })
+
+  const first = await service.list('current')
+  assert.equal(first.items.length, 2)
+  assert.equal(first.hidden, 0)
+  assert.equal(calls.length, 1)
+
+  cleared.push({ sessionId: first.items[0].sessionId, text: first.items[0].text })
+  const second = await service.list('current')
+  assert.equal(second.cached, true)
+  assert.equal(second.items.length, 1)
+  assert.equal(second.items[0].text, first.items[1].text)
+  assert.equal(second.hidden, 1)
+  assert.equal(calls.length, 1)
 })
