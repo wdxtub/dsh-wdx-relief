@@ -1,6 +1,6 @@
 {
   "name": "dsh-wdx-relief",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "description": "Take the friction out of daily DSH work: predicted next messages, a live one-line turn recap above the composer, and sidebar side questions with a composer-style model picker that stay out of the model context.",
   "type": "module",
   "main": "index.js",
