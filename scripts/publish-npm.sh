@@ -78,7 +78,7 @@ publish_once() {
 
 say "发布（如浏览器弹出验证页，请在浏览器完成验证，脚本会自动继续）"
 if ! publish_once; then
-  if grep -qE "E401|EOTP|401 Unauthorized|403 Forbidden" "$LOG"; then
+  if grep -qE "E401|EOTP|401 Unauthorized|403 Forbidden|E404|/-/v1/done" "$LOG"; then
     warn "发布认证失败，重新登录后自动重试一次"
     expect scripts/npm-login.exp || fail "npm 登录失败；日志：$LOG"
     if ! publish_once; then
