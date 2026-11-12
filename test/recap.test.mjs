@@ -278,8 +278,8 @@ test('readRecapConfig clamps and defaults the advanced fields', () => {
   assert.deepEqual(readRecapConfig(config({ minTurns: 0, cooldownTurns: -1, similarityThreshold: 3, maxWords: 0 })), {
     enabled: true,
     minTurns: 3,
-    cooldownTurns: 3,
-    similarityThreshold: 0.7,
+    cooldownTurns: 1,
+    similarityThreshold: 0.9,
     maxWords: 40,
     chain: '',
   })
@@ -418,4 +418,34 @@ test('generateSummary rejects a stream that never finishes', async () => {
   })
   assert.equal(calls, 1)
   assert.equal(result, null)
+})
+
+test('defaults refresh the summary on every new turn', async () => {
+  let messages = [
+    message('user', '第一轮'), message('assistant', '一'),
+    message('user', '第二轮'), message('assistant', '二'),
+    message('user', '第三轮'), message('assistant', '三'),
+  ]
+  let calls = 0
+  const service = createRecapService({
+    config: config({}),
+    sessions: { get: () => ({ seq: 1, deriveMessages: () => messages }) },
+    llm: {
+      stream: () => {
+        calls += 1
+        return fakeStream(calls === 1 ? '进度一' : '进度二')
+      },
+    },
+    defaultSelection: () => ({ provider: 'p', model: 'm' }),
+  })
+
+  const first = await service.recap('s1')
+  assert.equal(first.recap.summary, '进度一')
+  assert.equal(calls, 1)
+
+  messages = [...messages, message('user', '第四轮'), message('assistant', '四')]
+  const next = await service.recap('s1')
+  assert.equal(next.skipped, undefined)
+  assert.equal(next.recap.summary, '进度二')
+  assert.equal(calls, 2)
 })

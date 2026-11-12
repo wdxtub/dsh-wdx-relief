@@ -20,8 +20,8 @@ const MAX_OUTPUT_TOKENS = 512
 const SUMMARY_TIMEOUT_MS = 8000
 
 export const DEFAULT_MIN_TURNS = 3
-export const DEFAULT_COOLDOWN_TURNS = 3
-export const DEFAULT_SIMILARITY_THRESHOLD = 0.7
+export const DEFAULT_COOLDOWN_TURNS = 1
+export const DEFAULT_SIMILARITY_THRESHOLD = 0.9
 export const DEFAULT_MAX_WORDS = 40
 
 /** 便宜模型的名字通常带这些词；只用于自动挑选，不改变用户显式配置的顺序。 */

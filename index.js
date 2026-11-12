@@ -69,13 +69,13 @@ export const Config = Schema.object({
     .volatile()
     .description('至少经过几轮用户消息后才开始生成语义摘要'),
   recapCooldownTurns: Schema.number()
-    .default(3)
+    .default(1)
     .volatile()
-    .description('每隔几轮才更新语义摘要；1 表示每轮'),
+    .description('每隔几轮才更新语义摘要；1 表示每轮（默认每轮都更新）'),
   recapSimilarityThreshold: Schema.number()
-    .default(0.7)
+    .default(0.9)
     .volatile()
-    .description('新旧摘要相似度达到这个值时沿用旧的一行（0–1）'),
+    .description('新旧摘要相似度达到这个值时才沿用旧的一行（0–1，默认 0.9）'),
   recapMaxWords: Schema.number()
     .default(40)
     .volatile()

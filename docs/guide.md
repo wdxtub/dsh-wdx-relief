@@ -37,8 +37,8 @@ HMR 生效。
 | `recapReasoning` | `false` | 思考预览开关：折叠推理的第一行，本地生成 |
 | `recapPlacement` | `above` | `above` / `below`，这一行放在输入框上方还是下方 |
 | `recapMinTurns` | `3` | 至少几轮用户消息后才开始生成语义摘要 |
-| `recapCooldownTurns` | `3` | 每隔几轮更新一次语义摘要；`1` = 每轮 |
-| `recapSimilarityThreshold` | `0.7` | 新旧摘要相似度达到这个值就沿用旧的一行 |
+| `recapCooldownTurns` | `1` | 每隔几轮更新一次语义摘要；`1` = 每轮（默认每轮都更新，问完下一轮就换新） |
+| `recapSimilarityThreshold` | `0.9` | 新旧摘要相似度达到这个值才沿用旧的一行（调低会更容易出现「没更新」） |
 | `recapMaxWords` | `40` | 摘要词预算；中文按字算 |
 | `recapModelChain` | `''` | 摘要模型链，按顺序尝试 `provider/model`；留空自动挑便宜模型 |
 | `today` | `true` | 右侧栏 WDX Relief 页面里的「待跟进」清单 |
