@@ -22,6 +22,7 @@ export const SYSTEM_PROMPT = [
   '- 使用与用户最近消息相同的语言。',
   '- 优先给出具体动作、回答 agent 的提问、或确认下一步；不要泛泛地说「继续」。',
   '- 不要重复助手说过的话，也不要复述用户上一条消息。',
+  '- 「助手（提问）」/「用户（回答）」是助手用提问框向用户确认、用户点选的答案，按已经发生的对话处理。',
   '- 不要解释、不要引号、不要编号、不要加「预测：」之类的前缀。',
   '- 没有足够信息时只输出 <none>。',
 ].join('\n')
@@ -49,9 +50,71 @@ export function messageText(message) {
   return parts.join('\n').trim()
 }
 
+/** 提问框工具：助手用它让用户点选答案，答案不会以用户消息的形式出现。 */
+const QUESTION_TOOL = 'ask_user_question'
+const MAX_QUESTION_CHARS = 400
+const MAX_ANSWER_CHARS = 200
+
+function parseObject(value) {
+  if (value !== null && typeof value === 'object' && !Array.isArray(value)) return value
+  if (typeof value !== 'string' || value.trim() === '') return null
+  try {
+    const parsed = JSON.parse(value)
+    return parsed !== null && typeof parsed === 'object' && !Array.isArray(parsed) ? parsed : null
+  } catch {
+    return null
+  }
+}
+
+/** 「要写入吗？（选项：可以、先别）」——把提问框的问题压成一行。 */
+function questionLine(questions) {
+  const parts = []
+  for (const question of Array.isArray(questions) ? questions : []) {
+    if (question === null || typeof question !== 'object') continue
+    const text = typeof question.question === 'string' ? question.question.trim() : ''
+    if (text === '') continue
+    const labels = (Array.isArray(question.options) ? question.options : [])
+      .map((option) => (option !== null && typeof option === 'object' && typeof option.label === 'string' ? option.label.trim() : ''))
+      .filter((label) => label !== '')
+      .slice(0, 4)
+    parts.push(labels.length === 0 ? text : `${text}（选项：${labels.join('、')}）`)
+  }
+  return parts.join('；')
+}
+
+/** 用户的点选结果；多问题时带上题目，单独一题时靠上一行提问就够。 */
+function answerLine(answers, questions) {
+  const questionById = new Map()
+  let questionCount = 0
+  for (const question of Array.isArray(questions) ? questions : []) {
+    if (question === null || typeof question !== 'object') continue
+    questionCount += 1
+    const text = typeof question.question === 'string' ? question.question.trim() : ''
+    if (typeof question.id === 'string' && text !== '') questionById.set(question.id, text)
+  }
+
+  const parts = []
+  for (const answer of Array.isArray(answers) ? answers : []) {
+    if (answer === null || typeof answer !== 'object') continue
+    const selected = (Array.isArray(answer.selected) ? answer.selected : [])
+      .filter((value) => typeof value === 'string' && value.trim() !== '')
+      .map((value) => value.trim())
+    const custom = typeof answer.custom === 'string' ? answer.custom.trim() : ''
+    let picked
+    if (selected.length === 0) picked = custom === '' ? '跳过' : `自定义：${custom}`
+    else picked = custom === '' ? selected.join('、') : `${selected.join('、')}（补充：${custom}）`
+    const prompt = questionCount > 1 && typeof answer.id === 'string' ? questionById.get(answer.id) : undefined
+    parts.push(prompt === undefined ? picked : `${prompt} → ${picked}`)
+  }
+  return parts.join('；')
+}
+
 /**
  * 从 deriveMessages() 里截出最近几轮可读对话。
  * 只保留真人用户消息（source.kind === 'user'，排除注入的上下文）和助手消息；
+ * 提问框的问答要单独还原：前台回答写在工具结果的 JSON 里，排队回答是
+ * `source.kind === 'user-question-reply'` 的用户消息，两者都不是普通用户文本。
+ * 少了这两行，最近几轮看起来就像助手没问过就直接把事做完了。
  * 最后一条必须是助手，否则说明当前轮次还没结束，不该预测。
  */
 export function extractConversation(messages, options = {}) {
@@ -60,12 +123,65 @@ export function extractConversation(messages, options = {}) {
   const maxPromptChars = options.maxPromptChars ?? MAX_PROMPT_CHARS
 
   const items = []
+  /** callId -> 这一问的问题列表，用来给回答补上题目。 */
+  const asked = new Map()
+  const answered = new Set()
+
+  const pushAnswer = (callId, answers, questions) => {
+    if (typeof callId === 'string') {
+      if (answered.has(callId)) return
+      answered.add(callId)
+    }
+    const text = answerLine(answers, questions)
+    if (text === '') return
+    items.push({ role: 'user', kind: 'answer', text: clipText(text, MAX_ANSWER_CHARS) })
+  }
+
   for (const message of messages ?? []) {
-    if (!message || (message.role !== 'user' && message.role !== 'assistant')) continue
-    if (message.role === 'user' && message.source && message.source.kind !== 'user') continue
+    if (!message || typeof message !== 'object') continue
+
+    // 前台回答：ask_user_question 的结果落在一条 role: 'tool' 的消息里。
+    if (message.role === 'tool') {
+      const source = message.source
+      const callId = typeof message.toolCallId === 'string'
+        ? message.toolCallId
+        : source && typeof source === 'object' && typeof source.callId === 'string' ? source.callId : undefined
+      if (callId === undefined || !asked.has(callId) || message.isError === true) continue
+      const result = parseObject(messageText(message))
+      if (result !== null && Array.isArray(result.answers)) pushAnswer(callId, result.answers, asked.get(callId))
+      continue
+    }
+
+    if (message.role === 'user') {
+      const source = message.source
+      // 排队回答：用户回答在等待窗口关闭后才到达时，DSH 会追加一条用户消息。
+      if (source && typeof source === 'object' && source.kind === 'user-question-reply') {
+        const reply = parseObject(messageText(message))
+        if (reply === null || !Array.isArray(reply.answers)) continue
+        const callId = typeof source.callId === 'string'
+          ? source.callId
+          : typeof reply.callId === 'string' ? reply.callId : undefined
+        pushAnswer(callId, reply.answers, Array.isArray(reply.questions) ? reply.questions : (callId === undefined ? undefined : asked.get(callId)))
+        continue
+      }
+      if (source && typeof source === 'object' && source.kind !== 'user') continue
+    } else if (message.role !== 'assistant') {
+      continue
+    }
+
     const raw = messageText(message)
-    if (raw === '') continue
-    items.push({ role: message.role, text: clipText(raw, maxMessageChars) })
+    if (raw !== '') items.push({ role: message.role, text: clipText(raw, maxMessageChars) })
+
+    const blocks = message.role === 'assistant' && Array.isArray(message.content) ? message.content : []
+    for (const block of blocks) {
+      if (!block || typeof block !== 'object' || block.type !== 'tool-call' || block.name !== QUESTION_TOOL) continue
+      const args = parseObject(block.arguments)
+      const questions = args === null ? [] : Array.isArray(args.questions) ? args.questions : []
+      const text = questionLine(questions)
+      if (text === '') continue
+      if (typeof block.id === 'string') asked.set(block.id, questions)
+      items.push({ role: 'assistant', kind: 'question', text: clipText(text, MAX_QUESTION_CHARS) })
+    }
   }
 
   if (items.length < 2) return null
@@ -83,10 +199,17 @@ export function extractConversation(messages, options = {}) {
   return tail
 }
 
+/** 提问框的问答要标出来，模型才知道这是用户在弹窗里点的，不是随口说的。 */
+function speakerOf(item) {
+  if (item.kind === 'question') return '助手（提问）'
+  if (item.kind === 'answer') return '用户（回答）'
+  return item.role === 'user' ? '用户' : '助手'
+}
+
 /** 把对话尾段拼成给模型的 user prompt。 */
 export function buildPrompt(conversation) {
   const transcript = conversation
-    .map((item) => `${item.role === 'user' ? '用户' : '助手'}：${item.text}`)
+    .map((item) => `${speakerOf(item)}：${item.text}`)
     .join('\n\n')
   return [
     '以下是用户与编码 agent 的最近对话：',

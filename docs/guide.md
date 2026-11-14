@@ -71,6 +71,9 @@ bundle 层只声明入口和输入层的开关，其余字段由 schema 默认�
    空闲、空输入时以 350ms 防抖请求 `POST /api/wdx-relief/predict`。
 2. Host 用 `ctx.sessions.get(sessionId).deriveMessages()` 取最近几轮真人用户/助手文本，
    要求最后一条是助手消息；用 `agentDefaultModel` 的最低推理档位生成一条短句。
+   提问框（`ask_user_question`）的问答会还原成「助手（提问）」「用户（回答）」两行：前台回答在
+   工具结果的 `{"answers":[…]}` 里，排队回答是 `source.kind === 'user-question-reply'` 的用户消息；
+   不还原的话，最近几轮看起来就像助手没问过就把事做完了（例如刚写完 11 条，预测却以为用户还没确认）。
 3. 结果按 `session.seq` 缓存；客户端把灰字绝对定位到 `[data-composer-input]` 的文字起点，
    Tab 通过标准 prop `inputActions.setDraft()` 写入 Lexical 编辑器。
    这条 Codex 式体验依赖 composer 的布局矩形，是本插件已知的 DOM 耦合点。
