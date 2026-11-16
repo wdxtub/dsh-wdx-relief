@@ -1,54 +1,54 @@
 # WDX Relief
 
-降低 DSH 日常使用心智负担的小功能集合。目前六个功能，**全部设置都在这个插件的配置里**。
+A small collection of features that reduce the everyday mental load of using DSH. Six features today, and **every setting lives in this plugin's own configuration**.
 
-> 侧边栏 **插件 → 已安装插件 → WDX Relief**，配置区在 bundle 页面下方。
-> 不往 DSH 的 Settings 导航里插入页面；字段都是插件自己的 `Config`，写入后持久化到 profile 的 `cordis.patch.yml`。
+> Sidebar **Plugins → Installed plugins → WDX Relief**; the configuration area is below the bundle page.
+> It does not add a page to DSH's Settings navigation; every field is the plugin's own `Config`, persisted to the profile's `cordis.patch.yml` after saving.
 
-## 功能
+## Features
 
-- **输入框下一句预测**：对话结束后用灰字猜你接下来要发的话，<kbd>Tab</kbd> 填入；打字隐藏，<kbd>Esc</kbd> 忽略。
-- **输入框上的一行**（默认开启）：逐轮显示「这一轮在做什么、到哪了」。默认只显示语义摘要（每几轮用一次便宜模型）；活动流水、状态耗时、思考预览三项本地生成、零模型调用，按需开启。四类内容各有开关，这一行永不进入模型上下文。生成过的摘要会留在右侧 WDX Relief 面板里。
-- **WDX Relief 页面**（右侧栏，默认开启）：和 WDX Git 一样出现在右侧栏的工具列表里。页面用三个 Tab：默认是「待跟进」，把过去会话里提醒过你、但你还没处理的事列成清单，点条目跳回原会话，每条的「×」可以清掉不想要的建议（可撤销，清掉记录只存在本地）；「会话回顾」回看这个会话生成过的每一行摘要；「旁问」不进入主上下文。
-- **旁问**：Tab 里的输入框和 composer 一样是圆角卡片，底部可以选旁问专用模型（窄的时候只显示模型图标）、右侧圆形按钮发送；问答只留在面板里，不写会话、不写命令日志，也不进入模型上下文，不改变主会话模型。
-- **回复风格**：长度 **短 / 标准 / 详细**；风格 **默认 / 专业 / 亲和 / 直接 / 跟随我的风格**；可加最多 2000 字的自定义指令。
-- **便于行动**（默认开启）：先给结果和下一步；能一句说清的不写一段，术语先用白话说明；保留风险、失败条件和已授权该做的工作。
+- **Next-message prediction**: after a turn, grey text guesses what you'll send next; press <kbd>Tab</kbd> to accept. Typing hides it, <kbd>Esc</kbd> dismisses it.
+- **The line above the input** (on by default): shows turn by turn "what this turn is doing and where it is". By default it shows only the semantic recap (a cheap model every few turns); activity feed, timing, and reasoning preview are generated locally with zero model calls and can be enabled as needed. Each of the four content types has its own switch, and this line never enters the model context. Generated recaps stay in the WDX Relief panel on the right.
+- **WDX Relief page** (right sidebar, on by default): appears in the right sidebar's tool list just like WDX Git. It has three tabs: "Follow-ups" (default) lists things past sessions reminded you about that you haven't handled; click an item to jump back to that session, and the "×" on each clears unwanted suggestions (undoable; cleared records stay local). "Session review" looks back at every recap line generated in this session. "Ask aside" stays out of the main context.
+- **Ask aside**: the tab's input is a rounded card like the composer, with a model picker for the aside at the bottom (only the model icon when narrow) and a circular send button on the right. The Q&A stays in the panel: it is not written to the session or the command log, does not enter the model context, and does not change the main session's model.
+- **Reply style**: length **short / standard / detailed**; style **default / professional / friendly / blunt / follow my style**; up to 2000 characters of custom instructions.
+- **Action-first** (on by default): result and next step first; one sentence when one suffices, plain-language explanations of terms; keeps risks, failure conditions, and work you've already authorized.
 
-## 运行要求
+## Requirements
 
-- DSH Web profile；插件依赖 `connection` 与 `sessions` 服务。
-- 已配置默认模型。预测会把最近几轮对话作为 prompt 发给当前默认模型；旁问默认用当前会话模型，也可以在面板底部切到别的模型；「待跟进」会把近期会话的尾部片段发一次，做归并判断。三者都不写入会话日志、不触发 agent loop。
-- 语义摘要默认每 3 轮更新一次，先按你配置的便宜模型链尝试，再自动挑便宜模型，最后退回当前默认模型；模型失败时退回本地短拼接。活动流水、耗时、思考预览不调用模型。
+- DSH Web profile; the plugin depends on the `connection` and `sessions` services.
+- A default model configured. Prediction sends the last few turns to the current default model as a prompt; Ask aside uses the current session model by default and can be switched to another model at the bottom of the panel; Follow-ups sends one tail fragment from recent sessions for a merge decision. None of the three writes to the session log or triggers the agent loop.
+- The semantic recap updates every 3 turns by default: it tries your configured cheap-model chain first, then picks a cheap model automatically, then falls back to the current default model; on model failure it falls back to a local short concatenation. Activity feed, timing, and reasoning preview make no model calls.
 
-## 安装
+## Install
 
-在 DSH 侧边栏 **插件 → 添加插件** 输入：
+In the DSH sidebar, go to **Plugins → Add plugin** and enter:
 
 ```text
 dsh-wdx-relief
 ```
 
-或让 agent 调：
+Or have the agent call:
 
 ```text
 plugin_manager install_bundle target = "dsh-wdx-relief"
 ```
 
-或命令行：
+Or from the command line:
 
 ```bash
 dsh plugin --profile <profile> add dsh-wdx-relief
 ```
 
-安装后启用；客户端模块会在下次页面加载时挂载。
+Enable it after installing; the client module mounts on the next page load.
 
-本地开发时用 `link:` 安装当前目录的方式见 [docs/guide.md](docs/guide.md)。
+For local development with a `link:` install of the current directory, see [docs/guide.md](docs/guide.md).
 
-## 开发
+## Development
 
 ```bash
 pnpm install
 pnpm test
 ```
 
-完整的配置字段、实现细节、独立 web profile 安装方式和实机验证记录见 [docs/guide.md](docs/guide.md)。
+For the full config fields, implementation details, standalone web-profile install, and on-device verification records, see [docs/guide.md](docs/guide.md).

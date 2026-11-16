@@ -1,0 +1,48 @@
+# WDX Relief
+
+WDX Relief reduces the everyday friction of using DeepSeek Harness. Six features, all configured in the plugin's own settings below the bundle page (**Plugins → Installed plugins → WDX Relief**); nothing is added to the DSH Settings navigation.
+
+![WDX Relief configuration](bundle-config.webp)
+
+## What it does
+
+### Next-message prediction
+
+After a turn, grey text in the composer guesses what you are about to send. Press <kbd>Tab</kbd> to fill it in, keep typing to hide it, or press <kbd>Esc</kbd> to dismiss it. It sends the last few turns to the current default model and caches the result by session sequence; it does not write to the session log.
+
+### The line above the input
+
+A per-turn line that answers "what is this turn doing, and where is it". It offers four independent content types:
+
+- **Semantic recap** (on by default): a cheap model summarizes the latest turn every few turns.
+- **Activity feed**, **timing**, **reasoning preview**: generated locally with zero model calls, off by default.
+
+The line never enters the model context, and generated recaps are kept in the WDX Relief panel for review.
+
+### WDX Relief panel
+
+A right-sidebar page with three tabs:
+
+- **Follow-ups** (default): things past sessions raised that you have not acted on. Click an item to jump back to that session; "×" clears an unwanted suggestion (undoable, local only).
+- **Session review**: every recap line generated in this session.
+- **Ask aside**: a composer-style card with its own model picker. The Q&A stays in the panel — not in the session, not in the command log, not in the model context, and it does not change the main session model.
+
+### Reply style
+
+Length **short / standard / detailed** and style **default / professional / friendly / blunt / follow my style**, plus up to 2000 characters of custom instructions. These are prompt-level preferences: they change how a reply is expressed, not the task, the facts, or the tool permissions.
+
+### Action-first
+
+On by default: result and next step first, one sentence when one suffices, plain-language explanations of terms, while keeping risks, failure conditions, and work you have already authorized.
+
+## Install
+
+In the DSH sidebar, go to **Plugins → Add plugin**, enter `dsh-wdx-relief`, then enable it. From a checkout, run `dsh plugin --profile <name> add ./dsh-wdx-relief`.
+
+## Requirements and limits
+
+- DSH Web profile; the plugin depends on the `connection` and `sessions` services.
+- A default model must be configured. Prediction, the semantic recap, Follow-ups, and Ask aside make model calls; activity feed, timing, and reasoning preview do not.
+- Reply style is a soft prompt constraint, not a hard length limit.
+- Recaps are stored locally in `$DSH_HOME/wdx-relief/recaps.json` (up to 300 entries); clearing that file clears the history.
+- Ask aside keeps answers in panel memory only; closing the panel or switching sessions clears them.
