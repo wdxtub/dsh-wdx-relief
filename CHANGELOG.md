@@ -1,6 +1,6 @@
 # Changelog
 
-## Unreleased
+## 0.6.0 — 2026-11-17
 
 - 新增 **工具调用泄漏守卫**（默认开启）：模型把工具调用直接写成正文（strata serve 常见的 `<tool_call>` / `<function=NAME>` / `<parameter=NAME>`，以及 `<invoke>` / `antml:` 信封）、这一步没有任何工具卡、turn 却像「已完成」一样结束时，当场检测并在同一轮内注入纠正让模型用小块重发。
   - 移植自 `@irwdone/dsh-tool-call-leak-fix`（MIT），并按本插件的 volatile Config 改造：配置改动即时生效；新增 `toolRepair` / `toolRepairLang` / `toolRepairMaxCorrections`（默认 2）/ `toolRepairDebugLog` 四个字段，设置页同步新增「工具调用守卫」分组（开关、语言、每轮上限、诊断日志）。
