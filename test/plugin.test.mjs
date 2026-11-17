@@ -25,9 +25,14 @@ function createHostContext(output = '修一下失败的测试') {
   }
   const routes = new Map()
   let llmCalls = 0
+  const listeners = []
   const ctx = {
     sessions: { get: (id) => (id === 'session-1' ? session : undefined) },
     effect: (fn) => fn(),
+    on(name, listener) {
+      listeners.push(name)
+      return () => {}
+    },
     inject: (services, callback) => callback({
       systemPrompt: { section: (section) => { ctx.sections.push(section); return () => {} } },
     }),
@@ -69,6 +74,7 @@ function createHostContext(output = '修一下失败的测试') {
     ctx,
     route: (path = ROUTE_PATH) => routes.get(path),
     llmCalls: () => llmCalls,
+    listeners: () => listeners.slice(),
   }
 }
 
@@ -94,7 +100,7 @@ function request(body, path = ROUTE_PATH) {
 
 test('host plugin declares its route and config', () => {
   assert.equal(name, 'wdx-relief')
-  assert.deepEqual(inject, ['connection', 'sessions'])
+  assert.deepEqual(inject, ['connection', 'sessions', 'tools'])
   const config = Config({})
   assert.equal(config.enabled.get(), true)
   assert.equal(config.recap.get(), true)
@@ -112,6 +118,18 @@ test('host plugin declares its route and config', () => {
   assert.equal(config.writingStyle.get(), false)
   assert.equal(config.baseStyle.get(), 'default')
   assert.equal(config.customInstructions.get(), '')
+  assert.equal(config.toolRepair.get(), true)
+  assert.equal(config.toolRepairLang.get(), 'zh')
+  assert.equal(config.toolRepairMaxCorrections.get(), 2)
+  assert.equal(config.toolRepairDebugLog.get(), false)
+})
+
+test('apply mounts the tool-call repair listeners', () => {
+  const host = createHostContext()
+  apply(host.ctx, {})
+  for (const name of ['tools/pre-execute', 'tools/post-execute', 'session/event', 'agent/turn-stopping', 'agent/pre-step']) {
+    assert.ok(host.listeners().includes(name), name)
+  }
 })
 
 test('today route degrades to unavailable without a session query service', async () => {
@@ -448,6 +466,10 @@ test('client bundle registers the composer ghost prediction and settings page', 
   assert.equal(settings.actionable.text, 'true')
   assert.equal(settings.style.text, 'default')
   assert.equal(settings.customInstructions.text, '')
+  assert.equal(settings.toolRepair.text, 'true')
+  assert.equal(settings.toolRepairLang.text, 'zh')
+  assert.equal(settings.toolRepairMaxCorrections.text, '2')
+  assert.equal(typeof settings.toolRepairDebugLog.text, 'string')
   assert.equal(typeof injected.edit, 'function')
   assert.equal(typeof injected.save, 'function')
   assert.equal(typeof injected.discard, 'function')
@@ -468,6 +490,77 @@ test('client bundle registers the composer ghost prediction and settings page', 
   assert.equal(client.formatRecap({ kind: 'waiting', user: '再跑一次' }), '再跑一次 · 还没回复')
   assert.equal(client.trf(undefined, 'panel.ageShort', { hours: 3 }, '{hours} 小时'), '3 小时')
 })
+
+test('bundle settings page exposes the tool-call guard controls', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+  const react = {
+    createElement(type, props, ...children) { return { type, props: props || {}, children } },
+    useState(initial) { return [initial, () => {}] },
+    useEffect() {},
+    useRef() { return { current: null } },
+    useLayoutEffect() {},
+  }
+  const client = loaded.factory((id) => {
+    if (id === 'react') return react
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+
+  const field = (text) => ({ text, overridden: false, invalid: false })
+  const snapshot = {
+    writable: true,
+    saving: false,
+    enabled: field('true'),
+    recap: field('true'),
+    recapActivity: field('false'),
+    recapTiming: field('false'),
+    recapReasoning: field('false'),
+    recapPlacement: field('above'),
+    recapMinTurns: field('3'),
+    recapCooldownTurns: field('1'),
+    recapSimilarityThreshold: field('0.9'),
+    recapMaxWords: field('40'),
+    recapModelChain: field(''),
+    today: field('true'),
+    verbosity: field('low'),
+    actionable: field('true'),
+    style: field('default'),
+    customInstructions: field(''),
+    toolRepair: field('true'),
+    toolRepairLang: field('zh'),
+    toolRepairMaxCorrections: field('2'),
+    toolRepairDebugLog: field('false'),
+  }
+
+  const tree = client.BundleSettingsPage({
+    view: 'fields',
+    t: (key) => key,
+    useSettings: (select) => select(snapshot),
+    edit: () => {},
+    resetField: () => {},
+    save: () => {},
+    discard: () => {},
+  })
+
+  const keys = []
+  ;(function walk(node) {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) {
+      node.forEach(walk)
+      return
+    }
+    if (node.props && node.props.key) keys.push(node.props.key)
+    for (const child of node.children || []) walk(child)
+  })(tree)
+
+  for (const key of ['toolRepair', 'toolRepairLang', 'toolRepairMaxCorrections', 'toolRepairDebugLog']) {
+    assert.ok(keys.includes(key), key)
+  }
+})
+
 test('turn line derives activity, timing and reasoning from the event window', () => {
   const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
   let loaded = null

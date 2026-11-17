@@ -1,6 +1,6 @@
 # WDX Relief
 
-WDX Relief 降低 DeepSeek Harness 的日常使用摩擦。六个功能，全部配置在插件自己的设置里（**插件 → 已安装插件 → WDX Relief** 的 bundle 页面下方），不往 DSH 的 Settings 导航里加页面。
+WDX Relief 降低 DeepSeek Harness 的日常使用摩擦。七个功能，全部配置在插件自己的设置里（**插件 → 已安装插件 → WDX Relief** 的 bundle 页面下方），不往 DSH 的 Settings 导航里加页面。
 
 ![WDX Relief 配置页](bundle-config.webp)
 
@@ -35,14 +35,18 @@ WDX Relief 降低 DeepSeek Harness 的日常使用摩擦。六个功能，全部
 
 默认开启：先给结果和下一步，能一句说清的不写一段，术语先用白话说明，同时保留风险、失败条件和已授权该做的工作。
 
+### 工具调用泄漏守卫
+
+模型把工具调用直接写成正文（`<tool_call>` / `<invoke>` 信封）、这一步没有任何工具卡、turn 却像「已完成」一样结束时，当场检测并在同一轮内注入纠正让模型用小块重发；损坏的那一步会在模型可见面上被作废，fork 出去的会话首步会收到一份简报，提示历史里的坏样本不要模仿。默认最多自动纠正两次，可在插件设置的「工具调用守卫」分组里关闭或调低。
+
 ## 安装
 
 在 DSH 侧边栏 **插件 → 添加插件** 输入 `dsh-wdx-relief`，然后启用。从源码安装：`dsh plugin --profile <name> add ./dsh-wdx-relief`。
 
 ## 运行要求与限制
 
-- DSH Web profile；插件依赖 `connection` 与 `sessions` 服务。
-- 需要配置默认模型。预测、语义摘要、待跟进、旁问会调用模型；活动流水、耗时、思考预览不调用。
+- DSH Web profile；插件依赖 `connection`、`sessions` 与 `tools` 服务。
+- 需要配置默认模型。预测、语义摘要、待跟进、旁问会调用模型；活动流水、耗时、思考预览不调用。工具调用守卫平时零开销，触发时最多多一次模型步（受纠正次数上限约束）。
 - 回复风格是 prompt 软约束，不是硬性长度截断。
 - 摘要存放在本地 `$DSH_HOME/wdx-relief/recaps.json`（最多 300 条）；清空该文件即清空历史。
 - 旁问回答只存在面板内存里；关闭面板或切换会话即清空。

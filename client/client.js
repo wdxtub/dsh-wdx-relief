@@ -43,6 +43,7 @@ window.__ModuleLoader__.load({
     var DISMISS_PATH = '/api/wdx-relief/today/dismiss'
     var RESTORE_PATH = '/api/wdx-relief/today/restore'
     var RECAP_PLACEMENTS = ['above', 'below']
+    var TOOLREPAIR_LANGS = ['zh', 'en']
     var MAX_CUSTOM_CHARS = 2000
     var SWITCH = primitives && primitives.Switch
     var MENU = primitives && primitives.Menu
@@ -238,6 +239,17 @@ window.__ModuleLoader__.load({
       'settings.recapModelChain.placeholder': 'deepseek-v4-flash, deepseek-chat',
       'settings.btwHint': '提示：右侧 WDX Relief 面板的「旁问」Tab 可以直接问当前模型，底部可以选旁问模型；问答不会进入主上下文。',
       'settings.summary': '预测下一句，输入框上给一行进度；右侧面板整理待跟进的事、回看历史摘要，并可旁问且不污染上下文。',
+      'reply.group.toolRepair': '工具调用守卫',
+      'settings.toolRepair.title': '工具调用泄漏守卫',
+      'settings.toolRepair.description': '模型把工具调用写成正文、这一步没有工具卡却正常结束时，当场检测并在同一轮内纠正重发',
+      'settings.toolRepairLang.title': '修复提示语言',
+      'settings.toolRepairLang.description': '注入的纠正与拦截原因用中文还是英文',
+      'settings.toolRepairLang.zh': '中文',
+      'settings.toolRepairLang.en': 'English',
+      'settings.toolRepairMaxCorrections.title': '每轮最多纠正次数',
+      'settings.toolRepairMaxCorrections.description': '0 表示只标记不自动纠正；默认 2',
+      'settings.toolRepairDebugLog.title': '诊断日志',
+      'settings.toolRepairDebugLog.description': '输出检测、拦截与修复过程日志（默认关闭）',
       'turn.reasoning': '思考',
       'turn.pending': '还没回复',
       'turn.dismiss': '收起这一行',
@@ -363,6 +375,17 @@ window.__ModuleLoader__.load({
       'settings.recapModelChain.placeholder': 'deepseek-v4-flash, deepseek-chat',
       'settings.btwHint': 'Tip: the Aside tab in the WDX Relief panel asks the current model; pick a model at the bottom. The exchange never enters the model context.',
       'settings.summary': 'Predict the next message, keep a live line above the composer, and use the right panel for unanswered items, recap history, and side questions that stay out of context.',
+      'reply.group.toolRepair': 'Tool-call guard',
+      'settings.toolRepair.title': 'Tool-call leak guard',
+      'settings.toolRepair.description': 'When a tool call is written as text, produces no tool card, yet the turn closes normally: detect it and inject a correction in the same turn',
+      'settings.toolRepairLang.title': 'Correction language',
+      'settings.toolRepairLang.description': 'Use Chinese or English for injected corrections and denial reasons',
+      'settings.toolRepairLang.zh': '中文',
+      'settings.toolRepairLang.en': 'English',
+      'settings.toolRepairMaxCorrections.title': 'Max corrections per turn',
+      'settings.toolRepairMaxCorrections.description': '0 means flag only, never auto-correct; default 2',
+      'settings.toolRepairDebugLog.title': 'Diagnostic log',
+      'settings.toolRepairDebugLog.description': 'Log detection, denials and repairs (off by default)',
       'turn.reasoning': 'Thinking',
       'turn.pending': 'no reply yet',
       'turn.dismiss': 'Hide this line',
@@ -2296,6 +2319,10 @@ window.__ModuleLoader__.load({
             return value === '' ? { kind: 'clear' } : { kind: 'set', value: value }
           },
         },
+        { field: 'toolRepair', format: booleanText, parse: parseBoolean },
+        choiceField('toolRepairLang', TOOLREPAIR_LANGS, 'zh'),
+        numberField('toolRepairMaxCorrections', 2, 0, 10, 1),
+        { field: 'toolRepairDebugLog', format: booleanText, parse: parseBoolean },
       ])
 
       var store = model.bind(function () {
@@ -2317,6 +2344,10 @@ window.__ModuleLoader__.load({
           actionable: model.field('actionable'),
           style: model.field('style'),
           customInstructions: model.field('customInstructions'),
+          toolRepair: model.field('toolRepair'),
+          toolRepairLang: model.field('toolRepairLang'),
+          toolRepairMaxCorrections: model.field('toolRepairMaxCorrections'),
+          toolRepairDebugLog: model.field('toolRepairDebugLog'),
         }
       })
 
@@ -2530,6 +2561,10 @@ window.__ModuleLoader__.load({
       var actionable = state.actionable || emptyField
       var style = state.style || emptyField
       var customInstructions = state.customInstructions || emptyField
+      var toolRepair = state.toolRepair || emptyField
+      var toolRepairLang = state.toolRepairLang || emptyField
+      var toolRepairMaxCorrections = state.toolRepairMaxCorrections || emptyField
+      var toolRepairDebugLog = state.toolRepairDebugLog || emptyField
 
       function edit(name, value) {
         if (typeof props.edit === 'function') props.edit(name, value)
@@ -2544,6 +2579,9 @@ window.__ModuleLoader__.load({
       })
       var placementOptions = RECAP_PLACEMENTS.map(function (id) {
         return { id: id, label: tr(t, 'settings.recapPlacement.' + id, id === 'below' ? '输入框下方' : '输入框上方') }
+      })
+      var toolRepairLangOptions = TOOLREPAIR_LANGS.map(function (id) {
+        return { id: id, label: tr(t, 'settings.toolRepairLang.' + id, id === 'en' ? 'English' : '中文') }
       })
       var styleOptions = STYLE_OPTIONS.map(function (id) {
         var name = tr(t, 'reply.style.' + id, id)
@@ -2736,6 +2774,54 @@ window.__ModuleLoader__.load({
                   }),
                 ])
               : null,
+          ]),
+          h('div', { key: 'toolRepair', className: 'wdxs-group' }, [
+            h('div', { key: 'head', className: 'wdxs-groupHead' }, tr(t, 'reply.group.toolRepair', '工具调用守卫')),
+            h(ToggleField, {
+              key: 'toolRepair',
+              t: t,
+              title: tr(t, 'settings.toolRepair.title', '工具调用泄漏守卫'),
+              description: tr(t, 'settings.toolRepair.description', ''),
+              field: toolRepair,
+              disabled: disabled,
+              onChange: function (next) { edit('toolRepair', String(next)) },
+              onReset: function () { reset('toolRepair') },
+            }),
+            h(SelectField, {
+              key: 'toolRepairLang',
+              t: t,
+              title: tr(t, 'settings.toolRepairLang.title', '修复提示语言'),
+              description: tr(t, 'settings.toolRepairLang.description', ''),
+              options: toolRepairLangOptions,
+              value: toolRepairLang.text || 'zh',
+              overridden: toolRepairLang.overridden === true,
+              disabled: disabled || toolRepair.text === 'false',
+              onChange: function (next) { edit('toolRepairLang', next) },
+              onReset: function () { reset('toolRepairLang') },
+            }),
+            h(NumberField, {
+              key: 'toolRepairMaxCorrections',
+              t: t,
+              title: tr(t, 'settings.toolRepairMaxCorrections.title', '每轮最多纠正次数'),
+              description: tr(t, 'settings.toolRepairMaxCorrections.description', ''),
+              field: toolRepairMaxCorrections,
+              min: 0,
+              max: 10,
+              step: 1,
+              disabled: disabled || toolRepair.text === 'false',
+              onChange: function (next) { edit('toolRepairMaxCorrections', next) },
+              onReset: function () { reset('toolRepairMaxCorrections') },
+            }),
+            h(ToggleField, {
+              key: 'toolRepairDebugLog',
+              t: t,
+              title: tr(t, 'settings.toolRepairDebugLog.title', '诊断日志'),
+              description: tr(t, 'settings.toolRepairDebugLog.description', ''),
+              field: toolRepairDebugLog,
+              disabled: disabled || toolRepair.text === 'false',
+              onChange: function (next) { edit('toolRepairDebugLog', String(next)) },
+              onReset: function () { reset('toolRepairDebugLog') },
+            }),
           ]),
           h('div', { key: 'length', className: 'wdxs-group' }, [
             h('div', { key: 'head', className: 'wdxs-groupHead' }, tr(t, 'reply.group.length', '回复长度')),

@@ -1,6 +1,6 @@
 # WDX Relief
 
-WDX Relief reduces the everyday friction of using DeepSeek Harness. Six features, all configured in the plugin's own settings below the bundle page (**Plugins → Installed plugins → WDX Relief**); nothing is added to the DSH Settings navigation.
+WDX Relief reduces the everyday friction of using DeepSeek Harness. Seven features, all configured in the plugin's own settings below the bundle page (**Plugins → Installed plugins → WDX Relief**); nothing is added to the DSH Settings navigation.
 
 ![WDX Relief configuration](bundle-config.webp)
 
@@ -35,14 +35,18 @@ Length **short / standard / detailed** and style **default / professional / frie
 
 On by default: result and next step first, one sentence when one suffices, plain-language explanations of terms, while keeping risks, failure conditions, and work you have already authorized.
 
+### Tool-call leak guard
+
+When the model writes a tool call as literal text (a `<tool_call>` / `<invoke>` envelope), the step produces no tool card, yet the turn closes as if finished, the guard detects it on the spot and injects a correction in the same turn so the model reissues the call in smaller chunks. The damaged step is voided on the model-visible surface, and a forked session gets a one-time brief telling it not to imitate broken history. At most two automatic corrections per turn by default; it can be disabled or lowered in the plugin settings under "Tool-call guard".
+
 ## Install
 
 In the DSH sidebar, go to **Plugins → Add plugin**, enter `dsh-wdx-relief`, then enable it. From a checkout, run `dsh plugin --profile <name> add ./dsh-wdx-relief`.
 
 ## Requirements and limits
 
-- DSH Web profile; the plugin depends on the `connection` and `sessions` services.
-- A default model must be configured. Prediction, the semantic recap, Follow-ups, and Ask aside make model calls; activity feed, timing, and reasoning preview do not.
+- DSH Web profile; the plugin depends on the `connection`, `sessions`, and `tools` services.
+- A default model must be configured. Prediction, the semantic recap, Follow-ups, and Ask aside make model calls; activity feed, timing, and reasoning preview do not. The tool-call guard is zero-cost until it fires, then costs at most one extra model step (bounded by the correction limit).
 - Reply style is a soft prompt constraint, not a hard length limit.
 - Recaps are stored locally in `$DSH_HOME/wdx-relief/recaps.json` (up to 300 entries); clearing that file clears the history.
 - Ask aside keeps answers in panel memory only; closing the panel or switching sessions clears them.

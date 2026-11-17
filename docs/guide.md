@@ -46,6 +46,12 @@ HMR 生效。
 | `actionable` | `true` | 便于行动：先结果/下一步、白话解释术语、保留风险 |
 | `style` | `default` | `default` / `professional` / `friendly` / `blunt` / `follow` |
 | `customInstructions` | `''` | 最多 2000 字 |
+| `toolRepair` | `true` | 工具调用泄漏守卫总开关 |
+| `toolRepairLang` | `zh` | 修复提示语言：`zh` / `en` |
+| `toolRepairMaxCorrections` | `2` | 每轮最多自动纠正几次；`0` 关闭自动纠正 |
+| `toolRepairDebugLog` | `false` | 输出工具调用修复的诊断日志 |
+
+工具调用守卫这四个字段在设置页有独立分组「工具调用守卫」：总开关、修复提示语言、每轮最多纠正次数、诊断日志，改动即时生效。
 
 旧版本的 `writingStyle` / `baseStyle` 仍保留在 schema 里做迁移：没有 `style` 时，`writingStyle: true` 映射为 `follow`，`baseStyle` 的 professional/friendly/blunt 映射到同名风格；设置页只写新的 `style`。
 
@@ -58,6 +64,9 @@ bundle 层只声明入口和输入层的开关，其余字段由 schema 默认�
       config:
         enabled: true
         recap: true
+        toolRepair: true
+        toolRepairLang: zh
+        toolRepairMaxCorrections: 2
         recapActivity: false
         recapTiming: false
         recapReasoning: false
@@ -176,6 +185,34 @@ Host 在 `ctx.systemPrompt` 注册：
 按内容比例组织（句 > 段 > 清单）、术语先用白话说明、保留风险与失败条件、不复述、
 不把已获授权的工作交回用户。
 
+## 工具调用泄漏守卫
+
+解决一类静默失败：模型把工具调用**直接写成正文**（`<tool_call>` / `<function=NAME>` / `<parameter=NAME>`，
+或 `<invoke>` / `<parameter>`、`antml:` 前缀），这一步没有任何工具卡，agent loop 见 `toolCalls.length === 0`
+返回 `{kind:'completed'}`，turn 像「已完成」一样关闭。尤其在 strata 引擎 serve 的模型上出现过：
+信封落在正文里，对话直接结束，既不执行也不报错。
+
+实现移植自 `@irwdone/dsh-tool-call-leak-fix`（MIT），并按本插件的 volatile Config 语义改造（每次事件实时读配置）：
+
+- 纯检测核心在 `src/toolCallDetect.js`：零依赖、pure、永不抛错；结构分析前先做影子拷贝，
+  剥掉命名空间前缀，并把 strata 方言（`tool_call` → `invoke`、`function` → `parameter`）折成同一种标记，
+  所以配对、截断、尾部重复、头部开场等规则复用同一套逻辑。
+- 宿主接线在 `src/toolCallRepair.js`，五个机制各挂一个已核实的接缝：
+  - **M2** `tools/pre-execute`：分发前扫描参数，尾部结束序列增殖 / 结构截断且体量够大（≥2000 字符或 ≥20 行）
+    就拒绝并给出可操作原因；声明了必填参数却收到 `{}` 也拒。
+  - **M3** `tools/post-execute`：写入类工具自报空转（`noop:true`、`status:"noop"`、带内容却 `written:0`）时补一条提示。
+  - **M4** `session/event` + `agent/turn-stopping`：某步损坏**且**该步没有任何工具调用时，在 turn 即将关闭时
+    `agent.inject()` 一条纠正，让 turn 不关闭、同一轮内重发；第一次讲原因并要求小块重试，第二次更硬更短；
+    每轮次数由 `toolRepairMaxCorrections` 限制（默认 2），到顶即停。
+  - **M7** `agent/pre-step`：fork 会话首步前注入一次简报，把继承来的孤立调用标记标为损坏、不要模仿。
+  - **M9** 会话 surface 替换：把损坏那一步在模型可见面上遮蔽成一条说明（日志保留原始事件），零模型调用；
+    先用自建探针节点自检 `surfaceOp.replace` 语义，自检失败整个会话故障关闭。
+- 消息用生产者自有 source kind（`runtime-context` / `plugin:dsh-wdx-relief`），符合 v4 session 格式。
+- 单测：`test/toolCallDetect.test.mjs`（含 strata 样本、JSON 信封、反例）与 `test/toolCallRepair.test.mjs`
+  （M2/M3/M4/M7/M9 全链路 mock）。
+- 设置页新增独立分组「工具调用守卫」：总开关、修复提示语言、每轮最多纠正次数、诊断日志；客户端表单字段与
+  `readToolRepairConfig` 读取的键一一对应，保存后 Host 侧下一个事件即按新值生效。
+
 ## 实机验证记录（DSH 0.2.2-rc.1，历史配置页）
 
 - 侧边栏「插件」→ **WDX Relief** bundle 页出现配置区：输入开关、回复长度、便于行动开关、回复风格、自定义指令；
@@ -215,4 +252,6 @@ Host 在 `ctx.systemPrompt` 注册：
 - 旁问的回答只存在面板内存里，不跨刷新/重开保留；这是为了不把问答写进任何持久存储。
 - 写作风格只看当前对话；没有跨会话风格档案，也不读取工作区文件或外部应用。
 - 风格设置全局生效，暂不支持 per-session。
+- 工具调用守卫只能缩短故障窗口、把静默失败变成显式失败并在同一轮内重试，改不了模型本身的退化；触发时最多多一次模型步（受 `toolRepairMaxCorrections` 限制）。
+- 工具调用守卫平时零开销，但正常引用 `<tool_call>` 字样、且该步没有任何工具调用的解释性回复，理论上可能被判定为泄漏并注入一次纠正（下一事件会立即取消待定记录，不会连续误伤）。
 - 灰字定位依赖 composer 的 DOM 属性（`data-composer-card/input/placeholder`），DSH 改版时需要同步。

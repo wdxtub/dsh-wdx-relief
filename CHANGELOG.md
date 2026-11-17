@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- 新增 **工具调用泄漏守卫**（默认开启）：模型把工具调用直接写成正文（strata serve 常见的 `<tool_call>` / `<function=NAME>` / `<parameter=NAME>`，以及 `<invoke>` / `antml:` 信封）、这一步没有任何工具卡、turn 却像「已完成」一样结束时，当场检测并在同一轮内注入纠正让模型用小块重发。
+  - 移植自 `@irwdone/dsh-tool-call-leak-fix`（MIT），并按本插件的 volatile Config 改造：配置改动即时生效；新增 `toolRepair` / `toolRepairLang` / `toolRepairMaxCorrections`（默认 2）/ `toolRepairDebugLog` 四个字段，设置页同步新增「工具调用守卫」分组（开关、语言、每轮上限、诊断日志）。
+  - 五个机制：分发前拒绝结构损坏或参数被清空的大调用；写入类工具自报空转时补提示；静默失败同轮自愈（第一次讲原因、第二次更硬更短，到上限即停）；fork 会话首步简报；损坏步骤在模型可见 surface 上遮蔽（先自检 replace 语义，零模型调用）。
+  - Host 新增依赖 `tools` 服务；`node --test` 127 项通过（新增检测核心与宿主接线两组用例）。
+
 ## 0.5.2 — 2026-11-14
 
 - 修掉「预测看不到提问框」：输入框灰字预测的上下文里现在会带上 `ask_user_question` 的问答，
