@@ -42,7 +42,6 @@ window.__ModuleLoader__.load({
     var BTW_PATH = '/api/wdx-relief/btw'
     var DISMISS_PATH = '/api/wdx-relief/today/dismiss'
     var RESTORE_PATH = '/api/wdx-relief/today/restore'
-    var RECAP_PLACEMENTS = ['above', 'below']
     var TOOLREPAIR_LANGS = ['zh', 'en']
     var MAX_CUSTOM_CHARS = 2000
     var SWITCH = primitives && primitives.Switch
@@ -90,8 +89,6 @@ window.__ModuleLoader__.load({
       '.wdxt-row{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);min-height:28px;align-items:center;gap:6px;padding:4px 6px 4px 10px;font-size:12px;line-height:18px;display:flex}',
       '.wdxt-seg{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}',
       '.wdxt-activity{color:var(--dsw-alias-label-tertiary);flex:0 1 auto;max-width:46%}',
-      '.wdxt-time{color:var(--dsw-alias-label-caption);font-variant-numeric:tabular-nums;flex:none}',
-      '.wdxt-reason{color:var(--dsw-alias-label-caption);flex:0 1 auto;max-width:34%}',
       '.wdxt-summary{color:var(--dsw-alias-label-secondary);flex:1 1 auto;min-width:0}',
       '.wdxt-sep{color:var(--dsw-alias-border-l3);flex:none}',
       '.wdxt-close{width:16px;height:16px;color:var(--dsw-alias-label-caption);cursor:pointer;opacity:0;background:0 0;border:0;border-radius:999px;flex:none;place-items:center;padding:0;font:inherit;font-size:12px;line-height:1;display:grid}',
@@ -182,17 +179,18 @@ window.__ModuleLoader__.load({
     // -------------------------------------------------------------- locale
 
     var zh = {
-      'reply.intro': '这些偏好只影响回复的表达方式，不改变任务目标、事实准确性或工具权限。',
-      'reply.group.input': '输入',
-      'reply.group.length': '回复长度',
-      'reply.group.writing': '写作',
+      'settings.intro': '上半部分是各功能开关，下半部分是回复偏好；回复偏好只打进 system prompt，不改变工具权限。',
+      'settings.group.features': '功能',
+      'reply.group.reply': '回复方式',
       'reply.verbosity.title': '输出详细程度',
       'reply.verbosity.description': '选择回复包含细节的详细程度',
       'reply.verbosity.low': '短',
       'reply.verbosity.medium': '标准',
       'reply.verbosity.high': '详细',
       'reply.actionable.title': '便于行动',
-      'reply.actionable.description': '先给结果和下一步，少铺垫；能一句话说清就不展开，术语先用白话说明',
+      'reply.actionable.description': '先给结果和下一步，少铺垫；能一句话说清就不展开；保留风险与失败条件',
+      'reply.eli5.title': 'ELI5 模式',
+      'reply.eli5.description': '默认用 ELI5 的方式和我说话，如果我要求则深入讲解',
       'reply.style.title': '回复风格',
       'reply.style.description': '选择整体语气和表达方式',
       'reply.style.default': '默认',
@@ -211,29 +209,13 @@ window.__ModuleLoader__.load({
       'settings.title': '显示预测消息',
       'settings.description': '根据对话预测你接下来要发送的消息',
       'settings.turnLine': '输入框上的一行',
-      'settings.turnLine.note': '这一行只是界面提示，不进入模型上下文；前三项本地生成，只有语义摘要会调用模型。',
+      'settings.turnLine.note': '这一行只是界面提示，不进入模型上下文；活动流水本地生成，语义摘要会调用一次便宜模型。',
       'settings.recap.title': '语义摘要',
-      'settings.recap.description': '每几轮用一次便宜模型，写一行「现在到哪」',
+      'settings.recap.description': '每轮用一次便宜模型，写一行「现在到哪」',
       'settings.recapActivity.title': '活动流水',
       'settings.recapActivity.description': '正在读文件、跑命令、改代码；本地生成，零模型调用（默认关闭）',
-      'settings.recapTiming.title': '状态耗时',
-      'settings.recapTiming.description': '这一轮跑了多久；本地生成（默认关闭）',
-      'settings.recapReasoning.title': '思考预览',
-      'settings.recapReasoning.description': '折叠推理的第一行；本地生成，零模型调用（默认关闭）',
-      'settings.recapPlacement.title': '显示位置',
-      'settings.recapPlacement.description': '这一行放在输入框上方还是下方',
-      'settings.recapPlacement.above': '输入框上方',
-      'settings.recapPlacement.below': '输入框下方',
-      'settings.recapAdvanced': '高级（一般不用改）',
-      'settings.recapAdvancedHide': '收起高级设置',
-      'settings.recapMinTurns.title': '从第几轮开始',
-      'settings.recapMinTurns.description': '至少经过几轮用户消息才生成语义摘要',
-      'settings.recapCooldownTurns.title': '摘要更新间隔',
-      'settings.recapCooldownTurns.description': '每隔几轮更新一次；1 表示每轮',
-      'settings.recapSimilarityThreshold.title': '沿用旧摘要的阈值',
-      'settings.recapSimilarityThreshold.description': '新旧摘要相似度达到这个值就不再改字（0–1）',
-      'settings.recapMaxWords.title': '摘要长度',
-      'settings.recapMaxWords.description': '词预算；中文按字算',
+      'settings.advanced': '高级（一般不用改）',
+      'settings.advancedHide': '收起高级设置',
       'settings.recapModelChain.title': '摘要模型链',
       'settings.recapModelChain.description': '按顺序尝试 provider/model；留空自动挑便宜模型，全部失败退回当前默认模型',
       'settings.recapModelChain.placeholder': 'deepseek-v4-flash, deepseek-chat',
@@ -250,7 +232,6 @@ window.__ModuleLoader__.load({
       'settings.toolRepairMaxCorrections.description': '0 表示只标记不自动纠正；默认 2',
       'settings.toolRepairDebugLog.title': '诊断日志',
       'settings.toolRepairDebugLog.description': '输出检测、拦截与修复过程日志（默认关闭）',
-      'turn.reasoning': '思考',
       'turn.pending': '还没回复',
       'turn.dismiss': '收起这一行',
       'turn.thinking': '思考中…',
@@ -318,17 +299,18 @@ window.__ModuleLoader__.load({
     }
 
     var en = {
-      'reply.intro': 'These preferences shape expression only. They do not change goals, facts, or tool permissions.',
-      'reply.group.input': 'Input',
-      'reply.group.length': 'Reply length',
-      'reply.group.writing': 'Writing',
+      'settings.intro': 'Feature switches come first, reply preferences after; reply preferences only shape the system prompt and never change tool permissions.',
+      'settings.group.features': 'Features',
+      'reply.group.reply': 'Reply style',
       'reply.verbosity.title': 'Output detail',
       'reply.verbosity.description': 'How much detail replies should include',
       'reply.verbosity.low': 'Short',
       'reply.verbosity.medium': 'Standard',
       'reply.verbosity.high': 'Detailed',
       'reply.actionable.title': 'Actionable replies',
-      'reply.actionable.description': 'Lead with the result and next step; explain jargon in plain language; keep risks and failure conditions',
+      'reply.actionable.description': 'Lead with the result and next step; one sentence when one suffices; keep risks and failure conditions',
+      'reply.eli5.title': 'ELI5 mode',
+      'reply.eli5.description': "Talk to me like I'm 5 by default; go deeper when I ask",
       'reply.style.title': 'Reply style',
       'reply.style.description': 'Choose the overall tone and expression',
       'reply.style.default': 'Default',
@@ -347,29 +329,13 @@ window.__ModuleLoader__.load({
       'settings.title': 'Show predicted messages',
       'settings.description': 'Predict what you might send next based on the conversation',
       'settings.turnLine': 'Line above the composer',
-      'settings.turnLine.note': 'This line is UI only and never enters the model context. The first three modes are local; only the semantic summary calls a model.',
+      'settings.turnLine.note': 'This line is UI only and never enters the model context. The activity stream is local; the semantic summary makes one cheap-model call.',
       'settings.recap.title': 'Semantic summary',
-      'settings.recap.description': 'Every few turns, one cheap-model line describing where things stand',
+      'settings.recap.description': 'Every turn, one cheap-model line describing where things stand',
       'settings.recapActivity.title': 'Activity stream',
       'settings.recapActivity.description': 'Reading files, running commands, editing code; local, no model call (off by default)',
-      'settings.recapTiming.title': 'Elapsed time',
-      'settings.recapTiming.description': 'How long this turn has run; local (off by default)',
-      'settings.recapReasoning.title': 'Thinking preview',
-      'settings.recapReasoning.description': 'First line of the folded reasoning; local, no model call (off by default)',
-      'settings.recapPlacement.title': 'Placement',
-      'settings.recapPlacement.description': 'Show the line above or below the composer',
-      'settings.recapPlacement.above': 'Above the composer',
-      'settings.recapPlacement.below': 'Below the composer',
-      'settings.recapAdvanced': 'Advanced (rarely needed)',
-      'settings.recapAdvancedHide': 'Hide advanced settings',
-      'settings.recapMinTurns.title': 'Start after',
-      'settings.recapMinTurns.description': 'User messages required before a semantic summary starts',
-      'settings.recapCooldownTurns.title': 'Update every',
-      'settings.recapCooldownTurns.description': 'Turns between summary updates; 1 means every turn',
-      'settings.recapSimilarityThreshold.title': 'Keep-when-similar threshold',
-      'settings.recapSimilarityThreshold.description': 'Keep the previous line when the new summary is at least this similar (0–1)',
-      'settings.recapMaxWords.title': 'Summary length',
-      'settings.recapMaxWords.description': 'Word budget; Chinese counts by character',
+      'settings.advanced': 'Advanced (rarely needed)',
+      'settings.advancedHide': 'Hide advanced settings',
       'settings.recapModelChain.title': 'Summary model chain',
       'settings.recapModelChain.description': 'Try provider/model in order. Empty picks cheap models automatically, then falls back to the current default',
       'settings.recapModelChain.placeholder': 'deepseek-v4-flash, deepseek-chat',
@@ -386,7 +352,6 @@ window.__ModuleLoader__.load({
       'settings.toolRepairMaxCorrections.description': '0 means flag only, never auto-correct; default 2',
       'settings.toolRepairDebugLog.title': 'Diagnostic log',
       'settings.toolRepairDebugLog.description': 'Log detection, denials and repairs (off by default)',
-      'turn.reasoning': 'Thinking',
       'turn.pending': 'no reply yet',
       'turn.dismiss': 'Hide this line',
       'turn.thinking': 'Thinking…',
@@ -942,13 +907,11 @@ window.__ModuleLoader__.load({
     /**
      * 输入框上方（或下方）的一行：把「这一轮在做什么」压成一句。
      *
-     * 四种语义各自独立开关：
+     * 两种语义各自独立开关：
      * - activity：活动流水，读文件 / 跑命令 / 改代码，本地零成本；
-     * - timing：这一轮耗时，本地零成本；
-     * - reasoning：折叠推理的第一行，本地零成本；
      * - summary：语义摘要，走 Host 的便宜模型链，不进入模型上下文。
      *
-     * 前三种只读会话事件；第四种由 `POST /api/wdx-relief/recap` 生成。
+     * 前者只读会话事件；后者由 `POST /api/wdx-relief/recap` 生成。
      * 这一行永远不写回会话，也不进入下一次模型请求。
      */
 
@@ -1212,16 +1175,6 @@ window.__ModuleLoader__.load({
       }
     }
 
-    function formatDuration(ms) {
-      var seconds = Math.max(0, Math.round((Number(ms) || 0) / 1000))
-      if (seconds < 60) return seconds + 's'
-      var minutes = Math.floor(seconds / 60)
-      var rest = seconds % 60
-      if (minutes < 60) return minutes + 'm ' + (rest < 10 ? '0' : '') + rest + 's'
-      var hours = Math.floor(minutes / 60)
-      return hours + 'h ' + (minutes % 60) + 'm'
-    }
-
     /** 最近两个动作连成流水；没有工具时用阶段兜底。 */
     function activityText(view, t) {
       if (!view || view.turn === 0) return ''
@@ -1252,28 +1205,17 @@ window.__ModuleLoader__.load({
         var activity = activityText(view, t)
         if (activity !== '') segments.push({ key: 'activity', text: activity, className: 'wdxt-activity' })
       }
-      if (settings.timing && (view.running || view.elapsedMs >= 1000)) {
-        segments.push({ key: 'time', text: formatDuration(view.elapsedMs), className: 'wdxt-time' })
-      }
-      if (settings.reasoning && view.reasoning !== '') {
-        var label = tr(t, 'turn.reasoning', '思考')
-        segments.push({ key: 'reasoning', text: label + '：' + view.reasoning, className: 'wdxt-reason' })
-      }
       if (settings.summary && summary && summary.text) {
         segments.push({ key: 'summary', text: '※ ' + summary.text, className: 'wdxt-summary' })
       }
       return segments
     }
 
-    function lineSettings(settings, placement) {
+    function lineSettings(settings) {
       var value = (settings && settings.value) || {}
-      var configuredPlacement = value.recapPlacement === 'below' ? 'below' : 'above'
       return {
         activity: value.recapActivity === true,
-        timing: value.recapTiming === true,
-        reasoning: value.recapReasoning === true,
         summary: value.recap !== false,
-        placement: placement === configuredPlacement,
       }
     }
 
@@ -1301,12 +1243,11 @@ window.__ModuleLoader__.load({
     /**
      * 输入框上方 / 下方的一行。
      *
-     * 组件本身不写任何状态到会话；activity / timing / reasoning 来自事件窗口，
-     * summary 来自 Host 的 `recap` 路由。开关全部在插件配置里，不进入 prompt。
+     * 组件本身不写任何状态到会话；activity 来自事件窗口，
+     * summary 来自 Host 的 `recap` 路由。开关在插件配置里，不进入 prompt。
      */
     function TurnRecapDock(props) {
       var sessionId = props.sessionId
-      var placement = props.placement
       var useSession = props.useSession
       var useInput = props.useInput
       var useSettings = props.useSettings
@@ -1318,7 +1259,7 @@ window.__ModuleLoader__.load({
       var settings = useSettings ? useSettings(function (s) { return s }) : undefined
       var draft = typeof input.draft === 'string' ? input.draft : ''
       var attachments = Array.isArray(input.attachmentIds) ? input.attachmentIds.length : 0
-      var cfg = lineSettings(settings, placement)
+      var cfg = lineSettings(settings)
 
       var [entries, setEntries] = useState([])
       var [tick, setTick] = useState(0)
@@ -1387,7 +1328,6 @@ window.__ModuleLoader__.load({
           requested.current = ''
           return undefined
         }
-        if (!cfg.placement) return undefined
         if (!sessionId || running || view.turn === 0) return undefined
         if (activeSession.current !== sessionId) return undefined
         var key = sessionId + ':' + view.turn
@@ -1401,9 +1341,9 @@ window.__ModuleLoader__.load({
           // 摘要失败时静默：本地三种信息仍然可用，不打扰主任务。
         })
         return function () { controller.abort() }
-      }, [cfg.summary, cfg.placement, sessionId, running, view.turn])
+      }, [cfg.summary, sessionId, running, view.turn])
 
-      if (!cfg.placement || !sessionId) return null
+      if (!sessionId) return null
       if (draft.trim() !== '' || attachments > 0) return null
 
       // 运行中先展示本地活动；语义摘要只在上一条轮次结束后出现，避免把旧摘要说成这一轮。
@@ -1429,7 +1369,7 @@ window.__ModuleLoader__.load({
         onClick: function () { setDismissedTurn(view.turn) },
       }, '×'))
 
-      return h('div', { className: 'wdxt-root', 'data-wdx-turn-line': true, 'data-placement': placement || 'above' }, [
+      return h('div', { className: 'wdxt-root', 'data-wdx-turn-line': true, 'data-placement': 'above' }, [
         h('div', { className: 'wdxt-row', title: fullTitle }, children),
       ])
     }
@@ -2288,17 +2228,11 @@ window.__ModuleLoader__.load({
         { field: 'enabled', format: booleanText, parse: parseBoolean },
         { field: 'recap', format: booleanText, parse: parseBoolean },
         { field: 'recapActivity', format: booleanText, parse: parseBoolean },
-        { field: 'recapTiming', format: booleanText, parse: parseBoolean },
-        { field: 'recapReasoning', format: booleanText, parse: parseBoolean },
-        choiceField('recapPlacement', RECAP_PLACEMENTS, 'above'),
-        numberField('recapMinTurns', 3, 1, 50, 1),
-        numberField('recapCooldownTurns', 1, 1, 50, 1),
-        numberField('recapSimilarityThreshold', 0.9, 0, 1, 0.05),
-        numberField('recapMaxWords', 40, 5, 200, 1),
         textField('recapModelChain'),
         { field: 'today', format: booleanText, parse: parseBoolean },
         choiceField('verbosity', VERBOSITY_OPTIONS, 'low'),
         { field: 'actionable', format: booleanText, parse: parseBoolean },
+        { field: 'eli5', format: booleanText, parse: parseBoolean },
         {
           field: 'style',
           format: function (value) {
@@ -2331,17 +2265,11 @@ window.__ModuleLoader__.load({
           enabled: model.field('enabled'),
           recap: model.field('recap'),
           recapActivity: model.field('recapActivity'),
-          recapTiming: model.field('recapTiming'),
-          recapReasoning: model.field('recapReasoning'),
-          recapPlacement: model.field('recapPlacement'),
-          recapMinTurns: model.field('recapMinTurns'),
-          recapCooldownTurns: model.field('recapCooldownTurns'),
-          recapSimilarityThreshold: model.field('recapSimilarityThreshold'),
-          recapMaxWords: model.field('recapMaxWords'),
           recapModelChain: model.field('recapModelChain'),
           today: model.field('today'),
           verbosity: model.field('verbosity'),
           actionable: model.field('actionable'),
+          eli5: model.field('eli5'),
           style: model.field('style'),
           customInstructions: model.field('customInstructions'),
           toolRepair: model.field('toolRepair'),
@@ -2537,28 +2465,25 @@ window.__ModuleLoader__.load({
       if (props.view === 'summary') return tr(t, 'settings.summary', '预测下一句，输入框上给一行进度；右侧面板整理待跟进的事、回看历史摘要，并可旁问且不污染上下文。')
 
       var useSettings = props.useSettings
-      var advancedState = useState(false)
+      var lineAdvancedState = useState(false)
+      var toolAdvancedState = useState(false)
       var state = useSettings ? useSettings(function (s) { return s }) : undefined
       if (!state) return null
 
-      var advanced = advancedState[0]
-      var setAdvanced = advancedState[1]
+      var lineAdvanced = lineAdvancedState[0]
+      var setLineAdvanced = lineAdvancedState[1]
+      var toolAdvanced = toolAdvancedState[0]
+      var setToolAdvanced = toolAdvancedState[1]
       var disabled = state.writable === false || state.saving === true
       var emptyField = { text: '', overridden: false, invalid: false }
       var enabled = state.enabled || emptyField
       var recap = state.recap || emptyField
       var recapActivity = state.recapActivity || emptyField
-      var recapTiming = state.recapTiming || emptyField
-      var recapReasoning = state.recapReasoning || emptyField
-      var recapPlacement = state.recapPlacement || emptyField
-      var recapMinTurns = state.recapMinTurns || emptyField
-      var recapCooldownTurns = state.recapCooldownTurns || emptyField
-      var recapSimilarityThreshold = state.recapSimilarityThreshold || emptyField
-      var recapMaxWords = state.recapMaxWords || emptyField
       var recapModelChain = state.recapModelChain || emptyField
       var todayField = state.today || emptyField
       var verbosity = state.verbosity || emptyField
       var actionable = state.actionable || emptyField
+      var eli5 = state.eli5 || emptyField
       var style = state.style || emptyField
       var customInstructions = state.customInstructions || emptyField
       var toolRepair = state.toolRepair || emptyField
@@ -2576,9 +2501,6 @@ window.__ModuleLoader__.load({
 
       var verbosityOptions = VERBOSITY_OPTIONS.map(function (id) {
         return { id: id, label: tr(t, 'reply.verbosity.' + id, id) }
-      })
-      var placementOptions = RECAP_PLACEMENTS.map(function (id) {
-        return { id: id, label: tr(t, 'settings.recapPlacement.' + id, id === 'below' ? '输入框下方' : '输入框上方') }
       })
       var toolRepairLangOptions = TOOLREPAIR_LANGS.map(function (id) {
         return { id: id, label: tr(t, 'settings.toolRepairLang.' + id, id === 'en' ? 'English' : '中文') }
@@ -2609,7 +2531,7 @@ window.__ModuleLoader__.load({
 
       return h('div', { className: 'wdxs-page' }, [
         h(PluginStyles, { key: 'style', scope: 'settings' }),
-        h('div', { key: 'intro', className: 'wdxs-intro' }, tr(t, 'reply.intro', '')),
+        h('div', { key: 'intro', className: 'wdxs-intro' }, tr(t, 'settings.intro', '上半部分是各功能开关，下半部分是回复偏好；回复偏好只打进 system prompt，不改变工具权限。')),
         h(Form, {
           key: 'form',
           labels: formLabels,
@@ -2617,8 +2539,8 @@ window.__ModuleLoader__.load({
           onSave: function () { if (typeof props.save === 'function') props.save() },
           onDiscard: function () { if (typeof props.discard === 'function') props.discard() },
         }, [
-          h('div', { key: 'input', className: 'wdxs-group' }, [
-            h('div', { key: 'head', className: 'wdxs-groupHead' }, tr(t, 'reply.group.input', '输入')),
+          h('div', { key: 'features', className: 'wdxs-group' }, [
+            h('div', { key: 'head', className: 'wdxs-groupHead' }, tr(t, 'settings.group.features', '功能')),
             h(ToggleField, {
               key: 'prediction',
               t: t,
@@ -2649,36 +2571,6 @@ window.__ModuleLoader__.load({
             h('div', { key: 'head', className: 'wdxs-groupHead' }, tr(t, 'settings.turnLine', '输入框上的一行')),
             h('div', { key: 'note', className: 'wdxs-desc', style: { marginBottom: '8px' } }, tr(t, 'settings.turnLine.note', '')),
             h(ToggleField, {
-              key: 'recapActivity',
-              t: t,
-              title: tr(t, 'settings.recapActivity.title', '活动流水'),
-              description: tr(t, 'settings.recapActivity.description', ''),
-              field: recapActivity,
-              disabled: disabled,
-              onChange: function (next) { edit('recapActivity', String(next)) },
-              onReset: function () { reset('recapActivity') },
-            }),
-            h(ToggleField, {
-              key: 'recapTiming',
-              t: t,
-              title: tr(t, 'settings.recapTiming.title', '状态耗时'),
-              description: tr(t, 'settings.recapTiming.description', ''),
-              field: recapTiming,
-              disabled: disabled,
-              onChange: function (next) { edit('recapTiming', String(next)) },
-              onReset: function () { reset('recapTiming') },
-            }),
-            h(ToggleField, {
-              key: 'recapReasoning',
-              t: t,
-              title: tr(t, 'settings.recapReasoning.title', '思考预览'),
-              description: tr(t, 'settings.recapReasoning.description', ''),
-              field: recapReasoning,
-              disabled: disabled,
-              onChange: function (next) { edit('recapReasoning', String(next)) },
-              onReset: function () { reset('recapReasoning') },
-            }),
-            h(ToggleField, {
               key: 'recap',
               t: t,
               title: tr(t, 'settings.recap.title', '语义摘要'),
@@ -2688,79 +2580,25 @@ window.__ModuleLoader__.load({
               onChange: function (next) { edit('recap', String(next)) },
               onReset: function () { reset('recap') },
             }),
-            h(SelectField, {
-              key: 'recapPlacement',
+            h(ToggleField, {
+              key: 'recapActivity',
               t: t,
-              title: tr(t, 'settings.recapPlacement.title', '显示位置'),
-              description: tr(t, 'settings.recapPlacement.description', ''),
-              options: placementOptions,
-              value: recapPlacement.text || 'above',
-              overridden: recapPlacement.overridden === true,
+              title: tr(t, 'settings.recapActivity.title', '活动流水'),
+              description: tr(t, 'settings.recapActivity.description', ''),
+              field: recapActivity,
               disabled: disabled,
-              onChange: function (next) { edit('recapPlacement', next) },
-              onReset: function () { reset('recapPlacement') },
+              onChange: function (next) { edit('recapActivity', String(next)) },
+              onReset: function () { reset('recapActivity') },
             }),
             h('button', {
               key: 'advanced',
               type: 'button',
               className: 'wdxs-advanced',
-              'aria-expanded': advanced,
-              onClick: function () { setAdvanced(function (value) { return !value }) },
-            }, advanced ? tr(t, 'settings.recapAdvancedHide', '收起高级设置') : tr(t, 'settings.recapAdvanced', '高级（一般不用改）')),
-            advanced
+              'aria-expanded': lineAdvanced,
+              onClick: function () { setLineAdvanced(function (value) { return !value }) },
+            }, lineAdvanced ? tr(t, 'settings.advancedHide', '收起高级设置') : tr(t, 'settings.advanced', '高级（一般不用改）')),
+            lineAdvanced
               ? h('div', { key: 'advancedFields' }, [
-                  h(NumberField, {
-                    key: 'minTurns',
-                    t: t,
-                    title: tr(t, 'settings.recapMinTurns.title', '从第几轮开始'),
-                    description: tr(t, 'settings.recapMinTurns.description', ''),
-                    field: recapMinTurns,
-                    min: 1,
-                    max: 50,
-                    step: 1,
-                    disabled: disabled,
-                    onChange: function (next) { edit('recapMinTurns', next) },
-                    onReset: function () { reset('recapMinTurns') },
-                  }),
-                  h(NumberField, {
-                    key: 'cooldownTurns',
-                    t: t,
-                    title: tr(t, 'settings.recapCooldownTurns.title', '摘要更新间隔'),
-                    description: tr(t, 'settings.recapCooldownTurns.description', ''),
-                    field: recapCooldownTurns,
-                    min: 1,
-                    max: 50,
-                    step: 1,
-                    disabled: disabled,
-                    onChange: function (next) { edit('recapCooldownTurns', next) },
-                    onReset: function () { reset('recapCooldownTurns') },
-                  }),
-                  h(NumberField, {
-                    key: 'maxWords',
-                    t: t,
-                    title: tr(t, 'settings.recapMaxWords.title', '摘要长度'),
-                    description: tr(t, 'settings.recapMaxWords.description', ''),
-                    field: recapMaxWords,
-                    min: 5,
-                    max: 200,
-                    step: 1,
-                    disabled: disabled,
-                    onChange: function (next) { edit('recapMaxWords', next) },
-                    onReset: function () { reset('recapMaxWords') },
-                  }),
-                  h(NumberField, {
-                    key: 'similarity',
-                    t: t,
-                    title: tr(t, 'settings.recapSimilarityThreshold.title', '沿用旧摘要的阈值'),
-                    description: tr(t, 'settings.recapSimilarityThreshold.description', ''),
-                    field: recapSimilarityThreshold,
-                    min: 0,
-                    max: 1,
-                    step: 0.05,
-                    disabled: disabled,
-                    onChange: function (next) { edit('recapSimilarityThreshold', next) },
-                    onReset: function () { reset('recapSimilarityThreshold') },
-                  }),
                   h(TextField, {
                     key: 'modelChain',
                     t: t,
@@ -2787,44 +2625,55 @@ window.__ModuleLoader__.load({
               onChange: function (next) { edit('toolRepair', String(next)) },
               onReset: function () { reset('toolRepair') },
             }),
-            h(SelectField, {
-              key: 'toolRepairLang',
-              t: t,
-              title: tr(t, 'settings.toolRepairLang.title', '修复提示语言'),
-              description: tr(t, 'settings.toolRepairLang.description', ''),
-              options: toolRepairLangOptions,
-              value: toolRepairLang.text || 'zh',
-              overridden: toolRepairLang.overridden === true,
-              disabled: disabled || toolRepair.text === 'false',
-              onChange: function (next) { edit('toolRepairLang', next) },
-              onReset: function () { reset('toolRepairLang') },
-            }),
-            h(NumberField, {
-              key: 'toolRepairMaxCorrections',
-              t: t,
-              title: tr(t, 'settings.toolRepairMaxCorrections.title', '每轮最多纠正次数'),
-              description: tr(t, 'settings.toolRepairMaxCorrections.description', ''),
-              field: toolRepairMaxCorrections,
-              min: 0,
-              max: 10,
-              step: 1,
-              disabled: disabled || toolRepair.text === 'false',
-              onChange: function (next) { edit('toolRepairMaxCorrections', next) },
-              onReset: function () { reset('toolRepairMaxCorrections') },
-            }),
-            h(ToggleField, {
-              key: 'toolRepairDebugLog',
-              t: t,
-              title: tr(t, 'settings.toolRepairDebugLog.title', '诊断日志'),
-              description: tr(t, 'settings.toolRepairDebugLog.description', ''),
-              field: toolRepairDebugLog,
-              disabled: disabled || toolRepair.text === 'false',
-              onChange: function (next) { edit('toolRepairDebugLog', String(next)) },
-              onReset: function () { reset('toolRepairDebugLog') },
-            }),
+            h('button', {
+              key: 'advanced',
+              type: 'button',
+              className: 'wdxs-advanced',
+              'aria-expanded': toolAdvanced,
+              onClick: function () { setToolAdvanced(function (value) { return !value }) },
+            }, toolAdvanced ? tr(t, 'settings.advancedHide', '收起高级设置') : tr(t, 'settings.advanced', '高级（一般不用改）')),
+            toolAdvanced
+              ? h('div', { key: 'advancedFields' }, [
+                  h(SelectField, {
+                    key: 'toolRepairLang',
+                    t: t,
+                    title: tr(t, 'settings.toolRepairLang.title', '修复提示语言'),
+                    description: tr(t, 'settings.toolRepairLang.description', ''),
+                    options: toolRepairLangOptions,
+                    value: toolRepairLang.text || 'zh',
+                    overridden: toolRepairLang.overridden === true,
+                    disabled: disabled || toolRepair.text === 'false',
+                    onChange: function (next) { edit('toolRepairLang', next) },
+                    onReset: function () { reset('toolRepairLang') },
+                  }),
+                  h(NumberField, {
+                    key: 'toolRepairMaxCorrections',
+                    t: t,
+                    title: tr(t, 'settings.toolRepairMaxCorrections.title', '每轮最多纠正次数'),
+                    description: tr(t, 'settings.toolRepairMaxCorrections.description', ''),
+                    field: toolRepairMaxCorrections,
+                    min: 0,
+                    max: 10,
+                    step: 1,
+                    disabled: disabled || toolRepair.text === 'false',
+                    onChange: function (next) { edit('toolRepairMaxCorrections', next) },
+                    onReset: function () { reset('toolRepairMaxCorrections') },
+                  }),
+                  h(ToggleField, {
+                    key: 'toolRepairDebugLog',
+                    t: t,
+                    title: tr(t, 'settings.toolRepairDebugLog.title', '诊断日志'),
+                    description: tr(t, 'settings.toolRepairDebugLog.description', ''),
+                    field: toolRepairDebugLog,
+                    disabled: disabled || toolRepair.text === 'false',
+                    onChange: function (next) { edit('toolRepairDebugLog', String(next)) },
+                    onReset: function () { reset('toolRepairDebugLog') },
+                  }),
+                ])
+              : null,
           ]),
-          h('div', { key: 'length', className: 'wdxs-group' }, [
-            h('div', { key: 'head', className: 'wdxs-groupHead' }, tr(t, 'reply.group.length', '回复长度')),
+          h('div', { key: 'reply', className: 'wdxs-group' }, [
+            h('div', { key: 'head', className: 'wdxs-groupHead' }, tr(t, 'reply.group.reply', '回复方式')),
             h(SelectField, {
               key: 'verbosity',
               t: t,
@@ -2836,19 +2685,6 @@ window.__ModuleLoader__.load({
               disabled: disabled,
               onChange: function (next) { edit('verbosity', next) },
               onReset: function () { reset('verbosity') },
-            }),
-          ]),
-          h('div', { key: 'writing', className: 'wdxs-group' }, [
-            h('div', { key: 'head', className: 'wdxs-groupHead' }, tr(t, 'reply.group.writing', '写作')),
-            h(ToggleField, {
-              key: 'actionable',
-              t: t,
-              title: tr(t, 'reply.actionable.title', '便于行动'),
-              description: tr(t, 'reply.actionable.description', ''),
-              field: actionable,
-              disabled: disabled,
-              onChange: function (next) { edit('actionable', String(next)) },
-              onReset: function () { reset('actionable') },
             }),
             h(SelectField, {
               key: 'style',
@@ -2862,18 +2698,38 @@ window.__ModuleLoader__.load({
               onChange: function (next) { edit('style', next) },
               onReset: function () { reset('style') },
             }),
+            h(ToggleField, {
+              key: 'eli5',
+              t: t,
+              title: tr(t, 'reply.eli5.title', 'ELI5 模式'),
+              description: tr(t, 'reply.eli5.description', ''),
+              field: eli5,
+              disabled: disabled,
+              onChange: function (next) { edit('eli5', String(next)) },
+              onReset: function () { reset('eli5') },
+            }),
+            h(ToggleField, {
+              key: 'actionable',
+              t: t,
+              title: tr(t, 'reply.actionable.title', '便于行动'),
+              description: tr(t, 'reply.actionable.description', ''),
+              field: actionable,
+              disabled: disabled,
+              onChange: function (next) { edit('actionable', String(next)) },
+              onReset: function () { reset('actionable') },
+            }),
+            h(CustomTextField, {
+              key: 'custom',
+              t: t,
+              title: tr(t, 'reply.custom.title', '自定义指令'),
+              description: tr(t, 'reply.custom.description', ''),
+              placeholder: tr(t, 'reply.custom.placeholder', ''),
+              field: customInstructions,
+              disabled: disabled,
+              onChange: function (next) { edit('customInstructions', next) },
+              onReset: function () { reset('customInstructions') },
+            }),
           ]),
-          h(CustomTextField, {
-            key: 'custom',
-            t: t,
-            title: tr(t, 'reply.custom.title', '自定义指令'),
-            description: tr(t, 'reply.custom.description', ''),
-            placeholder: tr(t, 'reply.custom.placeholder', ''),
-            field: customInstructions,
-            disabled: disabled,
-            onChange: function (next) { edit('customInstructions', next) },
-            onReset: function () { reset('customInstructions') },
-          }),
         ]),
       ])
     }
@@ -2950,8 +2806,7 @@ window.__ModuleLoader__.load({
         }, PredictionOverlay)
       })
 
-      // 一行既可以放在输入框上方（input.dock），也可以放在 composer 底部
-      // （composer.dock）。两个 slot 都注册，组件按配置只渲染其中一个。
+      // 一行固定放在输入框上方（input.dock）。
       function readTurnFeed(sessionId) {
         try {
           var binding = ctx.sessions && typeof ctx.sessions.binding === 'function' ? ctx.sessions.binding(sessionId) : undefined
@@ -2961,7 +2816,7 @@ window.__ModuleLoader__.load({
         }
       }
 
-      function registerTurnLine(slot, id, placement) {
+      function registerTurnLine(slot, id) {
         ctx.slots.inject(slot, function () {
           return ctx.slots.register({
             name: slot,
@@ -2971,7 +2826,6 @@ window.__ModuleLoader__.load({
             inject: function (sessionId) {
               return {
                 sessionId: sessionId,
-                placement: placement,
                 readFeed: readTurnFeed,
                 hooks: { settings: formSource },
               }
@@ -2980,8 +2834,7 @@ window.__ModuleLoader__.load({
         })
       }
 
-      registerTurnLine('conversation.input.dock', 'wdx-turn-line-above', 'above')
-      registerTurnLine('conversation.composer.dock', 'wdx-turn-line-below', 'below')
+      registerTurnLine('conversation.input.dock', 'wdx-turn-line-above')
 
       ctx.slots.inject('plugins.bundle.config', function () {
         return ctx.slots.register({
@@ -3008,8 +2861,6 @@ window.__ModuleLoader__.load({
     exports.buildTurnSegments = buildTurnSegments
     exports.activityText = activityText
     exports.describeToolCall = describeToolCall
-    exports.formatDuration = formatDuration
-    exports.RECAP_PLACEMENTS = RECAP_PLACEMENTS
     exports.ReliefPanel = ReliefPanel
     exports.ReliefIcon = ReliefIcon
     exports.BtwSection = BtwSection

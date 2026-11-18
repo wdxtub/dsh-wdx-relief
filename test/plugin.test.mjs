@@ -105,13 +105,6 @@ test('host plugin declares its route and config', () => {
   assert.equal(config.enabled.get(), true)
   assert.equal(config.recap.get(), true)
   assert.equal(config.recapActivity.get(), false)
-  assert.equal(config.recapTiming.get(), false)
-  assert.equal(config.recapReasoning.get(), false)
-  assert.equal(config.recapPlacement.get(), 'above')
-  assert.equal(config.recapMinTurns.get(), 3)
-  assert.equal(config.recapCooldownTurns.get(), 1)
-  assert.equal(config.recapSimilarityThreshold.get(), 0.9)
-  assert.equal(config.recapMaxWords.get(), 40)
   assert.equal(config.recapModelChain.get(), '')
   assert.equal(config.today.get(), true)
   assert.equal(config.verbosity.get(), 'low')
@@ -414,7 +407,6 @@ test('client bundle registers the composer ghost prediction and settings page', 
     'sidebar.right.pane.tab',
     'conversation.input.overlay',
     'conversation.input.dock',
-    'conversation.composer.dock',
     'plugins.bundle.config',
   ])
   assert.equal(tabTypes.length, 1)
@@ -434,36 +426,24 @@ test('client bundle registers the composer ghost prediction and settings page', 
   const recap = registrations[2].options
   assert.equal(recap.id, 'wdx-turn-line-above')
   assert.equal(recap.order, 30)
-  assert.equal(recap.inject('session-1').placement, 'above')
   assert.equal(recap.inject('session-1').hooks.settings.getSnapshot().value.recap, true)
-
-  const recapBelow = registrations[3].options
-  assert.equal(recapBelow.id, 'wdx-turn-line-below')
-  assert.equal(recapBelow.order, 30)
-  assert.equal(recapBelow.inject('session-1').placement, 'below')
 
   assert.equal(typeof client.BtwSection, 'function')
 
-  const config = registrations[4].options
+  const config = registrations[3].options
   assert.equal(config.key, 'dsh-wdx-relief')
   assert.equal(config.locale, 'wdx-relief')
-  assert.equal(typeof registrations[4].component, 'function')
+  assert.equal(typeof registrations[3].component, 'function')
   const injected = config.inject()
   const settings = injected.hooks.settings.getSnapshot()
   assert.equal(settings.enabled.text, 'true')
   assert.equal(settings.recap.text, 'true')
   assert.equal(typeof settings.recapActivity.text, 'string')
-  assert.equal(typeof settings.recapTiming.text, 'string')
-  assert.equal(typeof settings.recapReasoning.text, 'string')
-  assert.equal(settings.recapPlacement.text, 'above')
-  assert.equal(settings.recapMinTurns.text, '3')
-  assert.equal(settings.recapCooldownTurns.text, '1')
-  assert.equal(settings.recapSimilarityThreshold.text, '0.9')
-  assert.equal(settings.recapMaxWords.text, '40')
   assert.equal(settings.recapModelChain.text, '')
   assert.equal(settings.today.text, 'true')
   assert.equal(settings.verbosity.text, 'low')
   assert.equal(settings.actionable.text, 'true')
+  assert.equal(settings.eli5.text, 'true')
   assert.equal(settings.style.text, 'default')
   assert.equal(settings.customInstructions.text, '')
   assert.equal(settings.toolRepair.text, 'true')
@@ -474,9 +454,6 @@ test('client bundle registers the composer ghost prediction and settings page', 
   assert.equal(typeof injected.save, 'function')
   assert.equal(typeof injected.discard, 'function')
 
-  assert.deepEqual([...client.RECAP_PLACEMENTS], ['above', 'below'])
-  assert.equal(client.formatDuration(12000), '12s')
-  assert.equal(client.formatDuration(65000), '1m 05s')
   assert.deepEqual({ ...client.describeToolCall('read', '{"path":"src/recap.js"}') }, { verb: 'read', target: 'recap.js' })
   assert.equal(client.formatRecap({ kind: 'question', question: '要继续吗？' }), '要继续吗？')
   assert.equal(
@@ -498,7 +475,8 @@ test('bundle settings page exposes the tool-call guard controls', () => {
   runInNewContext(code, sandbox)
   const react = {
     createElement(type, props, ...children) { return { type, props: props || {}, children } },
-    useState(initial) { return [initial, () => {}] },
+    // 展开「高级」折叠区，让断言能覆盖折叠后的字段。
+    useState(initial) { return [typeof initial === 'boolean' ? true : initial, () => {}] },
     useEffect() {},
     useRef() { return { current: null } },
     useLayoutEffect() {},
@@ -516,17 +494,11 @@ test('bundle settings page exposes the tool-call guard controls', () => {
     enabled: field('true'),
     recap: field('true'),
     recapActivity: field('false'),
-    recapTiming: field('false'),
-    recapReasoning: field('false'),
-    recapPlacement: field('above'),
-    recapMinTurns: field('3'),
-    recapCooldownTurns: field('1'),
-    recapSimilarityThreshold: field('0.9'),
-    recapMaxWords: field('40'),
     recapModelChain: field(''),
     today: field('true'),
     verbosity: field('low'),
     actionable: field('true'),
+    eli5: field('true'),
     style: field('default'),
     customInstructions: field(''),
     toolRepair: field('true'),
@@ -556,12 +528,15 @@ test('bundle settings page exposes the tool-call guard controls', () => {
     for (const child of node.children || []) walk(child)
   })(tree)
 
-  for (const key of ['toolRepair', 'toolRepairLang', 'toolRepairMaxCorrections', 'toolRepairDebugLog']) {
+  for (const key of ['features', 'turnLine', 'reply', 'toolRepair', 'recap', 'recapActivity', 'modelChain', 'eli5', 'toolRepairLang', 'toolRepairMaxCorrections', 'toolRepairDebugLog']) {
     assert.ok(keys.includes(key), key)
+  }
+  for (const key of ['recapTiming', 'recapReasoning', 'recapPlacement', 'minTurns', 'cooldownTurns', 'similarity', 'maxWords', 'length', 'writing']) {
+    assert.ok(!keys.includes(key), key)
   }
 })
 
-test('turn line derives activity, timing and reasoning from the event window', () => {
+test('turn line derives activity and summary from the event window', () => {
   const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
   let loaded = null
   const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
@@ -587,12 +562,12 @@ test('turn line derives activity, timing and reasoning from the event window', (
   assert.equal(view.actions.length, 1)
   assert.match(view.reasoning, /先检查依赖/)
 
-  const segments = client.buildTurnSegments(view, { activity: true, timing: true, reasoning: true, summary: true }, (key) => (key === 'turn.verb.read' ? '读取' : key), { text: '修测试，已修好' })
-  assert.deepEqual([...segments.map((segment) => segment.key)], ['activity', 'time', 'reasoning', 'summary'])
+  const segments = client.buildTurnSegments(view, { activity: true, summary: true }, (key) => (key === 'turn.verb.read' ? '读取' : key), { text: '修测试，已修好' })
+  assert.deepEqual([...segments.map((segment) => segment.key)], ['activity', 'summary'])
   assert.match(segments[0].text, /读取 README\.md/)
-  assert.equal(segments[1].text, '8s')
+  assert.equal(segments[1].text, '※ 修测试，已修好')
 
-  const localOnly = client.buildTurnSegments(view, { activity: true, timing: false, reasoning: false, summary: false }, (key) => key, null)
+  const localOnly = client.buildTurnSegments(view, { activity: true, summary: false }, (key) => key, null)
   assert.deepEqual([...localOnly.map((segment) => segment.key)], ['activity'])
 })
 

@@ -6,11 +6,9 @@
       config:
         enabled: true
         recap: true
+        eli5: true
         toolRepair: true
         toolRepairLang: zh
         toolRepairMaxCorrections: 2
         recapActivity: false
-        recapTiming: false
-        recapReasoning: false
-        recapPlacement: above
         today: true

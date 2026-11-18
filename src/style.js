@@ -28,11 +28,13 @@ const STYLE_LINES = {
 const ACTIONABLE_LINES = [
   '- 便于行动：开头直接给结果或最相关的下一步，不写「好的」「我来看看」之类铺垫；需要用户操作时，把命令、路径或决定放在显眼位置。',
   '- 能一句话说清的，不写成一段；能一段说清的，不列成清单；多步操作用短编号列表，一步对应一个可完成动作；次要信息放后面。',
-  '- 不用复杂名词堆砌代替解释：必须使用术语时，先用一句白话说明它是什么、为什么重要。',
   '- 重要细节、风险和失败条件不因精简而省略；出错时直接说症状、已知原因和下一步。',
   '- 不复述用户已说过或上一轮结论；长任务或中断后，用一句话说明已完成什么、当前卡在哪里。',
   '- 已获授权且工具可执行时直接完成，不把本可代办的工作交回用户；全部完成后自然结束。',
 ]
+
+/** ELI5 解释层的固定句子；默认开启，关掉即完全不出现。 */
+const ELI5_LINE = '默认用 ELI5 的方式和我说话，如果我要求则深入讲解。'
 
 const MAX_CUSTOM_CHARS = 2000
 
@@ -79,6 +81,10 @@ export function buildStylePrompt(config) {
     lines.push(...ACTIONABLE_LINES)
   }
 
+  if (read(config, 'eli5', true) === true) {
+    lines.push(`- ${ELI5_LINE}`)
+  }
+
   const style = resolveStyle(config)
   if (style !== 'default') {
     lines.push(`- ${STYLE_LINES[style]}`)
@@ -101,6 +107,7 @@ export function buildStylePrompt(config) {
 export const STYLE_DEFAULTS = {
   verbosity: 'low',
   actionable: true,
+  eli5: true,
   style: 'default',
   customInstructions: '',
 }

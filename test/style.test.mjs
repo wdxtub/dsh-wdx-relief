@@ -13,7 +13,7 @@ test('default style is short and actionable', () => {
   assert.match(prompt, /## 回复风格偏好/)
   assert.match(prompt, /保持回复简短/)
   assert.match(prompt, /便于行动/)
-  assert.match(prompt, /复杂名词/)
+  assert.match(prompt, /默认用 ELI5 的方式和我说话，如果我要求则深入讲解/)
   assert.doesNotMatch(prompt, /专业可靠/)
   assert.doesNotMatch(prompt, /跟随用户的写作风格/)
 })
@@ -25,7 +25,12 @@ test('model verbosity still keeps actionable organization', () => {
 })
 
 test('disabling actionable and every style yields no section', () => {
-  assert.equal(buildStylePrompt(config({ verbosity: 'model', actionable: false })), '')
+  assert.equal(buildStylePrompt(config({ verbosity: 'model', actionable: false, eli5: false })), '')
+})
+
+test('ELI5 is on by default and can be switched off', () => {
+  assert.match(buildStylePrompt(config()), /默认用 ELI5 的方式和我说话，如果我要求则深入讲解/)
+  assert.doesNotMatch(buildStylePrompt(config({ eli5: false, verbosity: 'model', actionable: false })), /ELI5/)
 })
 
 test('each style compiles to one short line', () => {

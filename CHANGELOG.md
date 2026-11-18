@@ -1,5 +1,16 @@
 # Changelog
 
+## Unreleased — 2026-11-18
+
+- 新增 **ELI5 模式**（默认开启）：设置页「回复方式」分组里一个开关，打开时向 system prompt 注入「默认用 ELI5 的方式和我说话，如果我要求则深入讲解」，关掉后这句完全不出现。
+  - 新字段 `eli5`（默认 `true`，volatile），与长度、便于行动、回复风格互相独立。
+  - `buildStylePrompt` 的顺序：长度 → 便于行动 → ELI5 → 风格 → 自定义指令。
+- 设置页瘦身：可见控件从 6 组 21 项收到 4 组（功能 / 输入框上的一行 / 回复方式 / 工具调用守卫）+ 高级折叠，顶层只剩 10 项。
+  - 删掉 `recapTiming`（状态耗时）、`recapReasoning`（思考预览）、`recapPlacement`（显示位置）、`recapMinTurns`、`recapCooldownTurns`、`recapSimilarityThreshold`、`recapMaxWords`：行为固定为原先的默认（一行固定在输入框上方、每轮更新、阈值 0.9、词预算 40），旧 profile 里的旧值不再生效。
+  - `recapModelChain` 与工具守卫的语言 / 每轮上限 / 诊断日志收进「高级」折叠；「自定义指令」并入「回复方式」组，「待跟进」与预测同放「功能」组。
+  - 「便于行动」删掉与 ELI5 重复的「术语先用白话说明」，解释深度交给 ELI5 开关。
+  - 输入框上方的一行不再注册 `conversation.composer.dock`，只保留上方位置。
+
 ## 0.6.0 — 2026-11-17
 
 - 新增 **工具调用泄漏守卫**（默认开启）：模型把工具调用直接写成正文（strata serve 常见的 `<tool_call>` / `<function=NAME>` / `<parameter=NAME>`，以及 `<invoke>` / `antml:` 信封）、这一步没有任何工具卡、turn 却像「已完成」一样结束时，当场检测并在同一轮内注入纠正让模型用小块重发。

@@ -12,10 +12,10 @@ After a turn, grey text in the composer guesses what you are about to send. Pres
 
 ### The line above the input
 
-A per-turn line that answers "what is this turn doing, and where is it". It offers four independent content types:
+A per-turn line that answers "what is this turn doing, and where is it", always above the composer:
 
-- **Semantic recap** (on by default): a cheap model summarizes the latest turn every few turns.
-- **Activity feed**, **timing**, **reasoning preview**: generated locally with zero model calls, off by default.
+- **Semantic recap** (on by default): a cheap model summarizes the latest turn every turn.
+- **Activity feed**: generated locally with zero model calls, off by default.
 
 The line never enters the model context, and generated recaps are kept in the WDX Relief panel for review.
 
@@ -33,7 +33,11 @@ Length **short / standard / detailed** and style **default / professional / frie
 
 ### Action-first
 
-On by default: result and next step first, one sentence when one suffices, plain-language explanations of terms, while keeping risks, failure conditions, and work you have already authorized.
+On by default: result and next step first, one sentence when one suffices, while keeping risks, failure conditions, and work you have already authorized.
+
+### ELI5 mode
+
+On by default: injects one line, "talk to me like I'm 5 by default; go deeper when I ask". Turning it off removes that line entirely.
 
 ### Tool-call leak guard
 
@@ -46,7 +50,7 @@ In the DSH sidebar, go to **Plugins → Add plugin**, enter `dsh-wdx-relief`, th
 ## Requirements and limits
 
 - DSH Web profile; the plugin depends on the `connection`, `sessions`, and `tools` services.
-- A default model must be configured. Prediction, the semantic recap, Follow-ups, and Ask aside make model calls; activity feed, timing, and reasoning preview do not. The tool-call guard is zero-cost until it fires, then costs at most one extra model step (bounded by the correction limit).
+- A default model must be configured. Prediction, the semantic recap, Follow-ups, and Ask aside make model calls; the activity feed does not. The tool-call guard is zero-cost until it fires, then costs at most one extra model step (bounded by the correction limit).
 - Reply style is a soft prompt constraint, not a hard length limit.
 - Recaps are stored locally in `$DSH_HOME/wdx-relief/recaps.json` (up to 300 entries); clearing that file clears the history.
 - Ask aside keeps answers in panel memory only; closing the panel or switching sessions clears them.

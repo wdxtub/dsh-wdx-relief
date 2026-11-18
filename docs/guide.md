@@ -31,19 +31,13 @@ HMR 生效。
 | 字段 | 默认 | 说明 |
 |---|---|---|
 | `enabled` | `true` | 输入框预测开关 |
-| `recap` | `true` | 语义摘要开关：每几轮用一次便宜模型写「现在到哪」 |
+| `recap` | `true` | 语义摘要开关：每轮用一次便宜模型写「现在到哪」 |
 | `recapActivity` | `false` | 活动流水开关：读文件 / 跑命令 / 改代码，本地生成 |
-| `recapTiming` | `false` | 状态耗时开关：这一轮跑了多久，本地生成 |
-| `recapReasoning` | `false` | 思考预览开关：折叠推理的第一行，本地生成 |
-| `recapPlacement` | `above` | `above` / `below`，这一行放在输入框上方还是下方 |
-| `recapMinTurns` | `3` | 至少几轮用户消息后才开始生成语义摘要 |
-| `recapCooldownTurns` | `1` | 每隔几轮更新一次语义摘要；`1` = 每轮（默认每轮都更新，问完下一轮就换新） |
-| `recapSimilarityThreshold` | `0.9` | 新旧摘要相似度达到这个值才沿用旧的一行（调低会更容易出现「没更新」） |
-| `recapMaxWords` | `40` | 摘要词预算；中文按字算 |
 | `recapModelChain` | `''` | 摘要模型链，按顺序尝试 `provider/model`；留空自动挑便宜模型 |
 | `today` | `true` | 右侧栏 WDX Relief 页面里的「待跟进」清单 |
 | `verbosity` | `low` | `low` / `medium` / `high`（旧值 `model` 仍兼容） |
-| `actionable` | `true` | 便于行动：先结果/下一步、白话解释术语、保留风险 |
+| `actionable` | `true` | 便于行动：先结果/下一步、保留风险 |
+| `eli5` | `true` | 默认用 ELI5 的方式说话，用户要求时再深入讲解 |
 | `style` | `default` | `default` / `professional` / `friendly` / `blunt` / `follow` |
 | `customInstructions` | `''` | 最多 2000 字 |
 | `toolRepair` | `true` | 工具调用泄漏守卫总开关 |
@@ -51,7 +45,7 @@ HMR 生效。
 | `toolRepairMaxCorrections` | `2` | 每轮最多自动纠正几次；`0` 关闭自动纠正 |
 | `toolRepairDebugLog` | `false` | 输出工具调用修复的诊断日志 |
 
-工具调用守卫这四个字段在设置页有独立分组「工具调用守卫」：总开关、修复提示语言、每轮最多纠正次数、诊断日志，改动即时生效。
+「工具调用守卫」分组顶层只有总开关；修复提示语言、每轮最多纠正次数、诊断日志收进「高级」折叠，改动即时生效。
 
 旧版本的 `writingStyle` / `baseStyle` 仍保留在 schema 里做迁移：没有 `style` 时，`writingStyle: true` 映射为 `follow`，`baseStyle` 的 professional/friendly/blunt 映射到同名风格；设置页只写新的 `style`。
 
@@ -68,9 +62,6 @@ bundle 层只声明入口和输入层的开关，其余字段由 schema 默认�
         toolRepairLang: zh
         toolRepairMaxCorrections: 2
         recapActivity: false
-        recapTiming: false
-        recapReasoning: false
-        recapPlacement: above
         today: true
 ```
 
@@ -89,25 +80,22 @@ bundle 层只声明入口和输入层的开关，其余字段由 schema 默认�
 
 ## 输入框上的一行
 
-这一行是**逐轮**的，不是会话级的；它回答「这一轮在做什么、到哪了」。四种语义各有独立开关，默认只开语义摘要，避免和 transcript 里已有的工具卡片、耗时、推理重复交叉：
+这一行是**逐轮**的，不是会话级的；它回答「这一轮在做什么、到哪了」。两个开关，默认只开语义摘要：
 
 | 片段 | 来源 | 成本 |
 |---|---|---|
 | 活动流水 | `session.binding.eventSource` 里的 `tool/call`、`tool/result`、步骤事件 | 本地，零调用 |
-| 状态耗时 | `turn/start` 的 `time` 与当前时间 | 本地，零调用 |
-| 思考预览 | `assistant/live-chunk` 的 `reasoning-delta`，取最后一个完整段落的第一行 | 本地，零调用 |
-| 语义摘要 | `POST /api/wdx-relief/recap`，Host 用便宜模型概括最近一轮 | 每 `cooldownTurns` 轮一次 |
+| 语义摘要 | `POST /api/wdx-relief/recap`，Host 用便宜模型概括最近一轮 | 每轮一次便宜模型 |
 
-1. 客户端同时注册 `conversation.input.dock`（上方）和 `conversation.composer.dock`（下方），
-   按 `recapPlacement` 只渲染其中一个，并且只有匹配的那个会发起摘要请求；两边是同一个组件。
-2. 活动 / 耗时 / 思考只读 `ctx.sessions.binding(sessionId).eventSource`；窗口变化时 React
-   重算，运行中每秒刷新耗时。**不写会话、不写命令日志、不注入 prompt**。
+1. 固定注册在 `conversation.input.dock`（输入框上方），不再提供上下位置选项。
+2. 活动流水只读 `ctx.sessions.binding(sessionId).eventSource`；窗口变化时 React
+   重算。**不写会话、不写命令日志、不注入 prompt**。
 3. 轮次结束后，客户端按 `sessionId + turn` 去重请求一次回顾。Host 只读
-   `session.deriveMessages()`，取最近一轮真人用户/助手文本，按下列门限决定是否真的调用模型：
-   - `minTurns`：用户消息不足时返回 `skipped: 'min-turns'`；
-   - `cooldownTurns`：距离上次生成不足 N 轮时返回 `skipped: 'cooldown'`，沿用上一行；
-   - `similarityThreshold`：新摘要与已显示的摘要词集合 Jaccard 相似度达到阈值时沿用上一行；
-   - `maxWords`：按混排词预算截断，中文按字、英文按词。
+   `session.deriveMessages()`，取最近一轮真人用户/助手文本，门限固定为：
+   - 用户消息满 3 轮才开始（`minTurns`）；
+   - 每轮更新；新摘要与已显示的摘要词集合 Jaccard 相似度 ≥ 0.9 时沿用上一行；
+   - 词预算 40，中文按字、英文按词。
+   这些阈值不再作为配置暴露。
 4. 模型链先按 `recapModelChain` 里的 `provider/model` 顺序尝试；裸模型 id 会先在默认 provider
    下解析，再查各 provider 的目录。没有配置时，从目录里挑名字带 `flash` / `mini` / `lite` /
    `haiku` 等词的模型，最后退回 `agentDefaultModel.currentSelection()`。某个模型失败（凭据缺失、
@@ -178,12 +166,16 @@ Host 在 `ctx.systemPrompt` 注册：
 }
 ```
 
-`buildStylePrompt` 只输出非默认项，并加一段“只影响表达方式”的前缀。自定义指令最多 2000 字；
+`buildStylePrompt` 只输出生效项：默认开启的长度、便于行动、ELI5 与风格都会写进 prompt，关掉的项不出现；
+开头加一段“只影响表达方式”的说明。自定义指令最多 2000 字；
 `interpolate: false` 让其中的 `{{...}}` 保持字面量，避免 prompt 装配报错。
 
 「便于行动」规则改编自 `agent-configs-skills/skills/i-have-adhd`（MIT）：开头给结果/下一步、
-按内容比例组织（句 > 段 > 清单）、术语先用白话说明、保留风险与失败条件、不复述、
+按内容比例组织（句 > 段 > 清单）、保留风险与失败条件、不复述、
 不把已获授权的工作交回用户。
+
+「ELI5 模式」默认开启，只注入一句「默认用 ELI5 的方式和我说话，如果我要求则深入讲解」；
+关掉后这句完全不出现，其余长度、风格、自定义指令不受影响。
 
 ## 工具调用泄漏守卫
 
@@ -210,13 +202,13 @@ Host 在 `ctx.systemPrompt` 注册：
 - 消息用生产者自有 source kind（`runtime-context` / `plugin:dsh-wdx-relief`），符合 v4 session 格式。
 - 单测：`test/toolCallDetect.test.mjs`（含 strata 样本、JSON 信封、反例）与 `test/toolCallRepair.test.mjs`
   （M2/M3/M4/M7/M9 全链路 mock）。
-- 设置页新增独立分组「工具调用守卫」：总开关、修复提示语言、每轮最多纠正次数、诊断日志；客户端表单字段与
-  `readToolRepairConfig` 读取的键一一对应，保存后 Host 侧下一个事件即按新值生效。
+- 设置页有独立分组「工具调用守卫」：总开关在顶层，修复提示语言、每轮最多纠正次数、诊断日志收在「高级」折叠里；
+  客户端表单字段与 `readToolRepairConfig` 读取的键一一对应，保存后 Host 侧下一个事件即按新值生效。
 
 ## 实机验证记录（DSH 0.2.2-rc.1，历史配置页）
 
-- 侧边栏「插件」→ **WDX Relief** bundle 页出现配置区：输入开关、回复长度、便于行动开关、回复风格、自定义指令；
-- 下拉框、开关、textarea 均可写入；关闭再打开设置后保持；`--dump-config` 能看到 `verbosity`、`actionable`、`style`、`customInstructions`；
+- 侧边栏「插件」→ **WDX Relief** bundle 页出现配置区：功能开关（预测、待跟进）、输入框上的一行、回复方式、工具调用守卫；
+- 下拉框、开关、textarea 均可写入；关闭再打开设置后保持；`--dump-config` 能看到 `verbosity`、`actionable`、`eli5`、`style`、`customInstructions`；
 - Settings 导航不再出现「回复」，General 不再出现预测行（已迁移到插件配置）；
 - 输入框灰字出现、打字隐藏、清空重现，Tab 真正写入 Lexical；
 - 关闭预测开关后不再发预测请求；
@@ -243,7 +235,7 @@ Host 在 `ctx.systemPrompt` 注册：
 ## 已知限制
 
 - 回复风格是 prompt 软约束，不是硬截断；复杂任务仍可能写长。
-- 语义摘要依赖一次模型调用；模型失败时退回本地短拼接，且**失败结果不缓存、不写历史**，下一轮会重试。活动流水 / 耗时 / 思考预览不受影响。
+- 语义摘要依赖一次模型调用；模型失败时退回本地短拼接，且**失败结果不缓存、不写历史**，下一轮会重试。活动流水不受影响。
 - 「会话回顾」历史存在本地 `$DSH_HOME/wdx-relief/recaps.json`，最多 300 条；换机器或清空该文件即清空历史。
 - 旁问只把最近几轮文本作为背景；它不会读取工作区文件，也不会自动带上未提交的改动。
 - 旁问默认使用当前会话模型，也可以在面板底部选别的模型；选择只影响这一次/这一组旁问，不改主会话模型。

@@ -301,7 +301,9 @@ function unitRatio(value, fallback) {
   return typeof value === 'number' && Number.isFinite(value) && value >= 0 && value <= 1 ? value : fallback
 }
 
-/** 把 Config 读取集中在一处，服务和测试都按同一套默认值走。 */
+/** 把 Config 读取集中在一处，服务和测试都按同一套默认值走。
+ * minTurns / cooldownTurns / similarityThreshold / maxWords 已从界面撤掉，
+ * 保留读取只为服务层测试；生产里配置没有这些引用，回落到下面的默认值。 */
 export function readRecapConfig(config) {
   return {
     enabled: read(config, 'recap', true) !== false,

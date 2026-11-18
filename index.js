@@ -49,39 +49,11 @@ export const Config = Schema.object({
   recap: Schema.boolean()
     .default(true)
     .volatile()
-    .description('输入框上方那一行的语义摘要：每几轮用一次便宜模型写「现在到哪」，不进入模型上下文'),
+    .description('输入框上方那一行的语义摘要：每轮用一次便宜模型写「现在到哪」，不进入模型上下文'),
   recapActivity: Schema.boolean()
     .default(false)
     .volatile()
     .description('输入框上方那一行的活动流水：正在读文件、跑命令、改代码，本地生成，零模型调用'),
-  recapTiming: Schema.boolean()
-    .default(false)
-    .volatile()
-    .description('输入框上方那一行的耗时：这一轮跑了多久，本地生成'),
-  recapReasoning: Schema.boolean()
-    .default(false)
-    .volatile()
-    .description('输入框上方那一行的思考预览：折叠推理的第一行，本地生成'),
-  recapPlacement: Schema.union(['above', 'below'])
-    .default('above')
-    .volatile()
-    .description('这一行放在输入框上方还是下方'),
-  recapMinTurns: Schema.number()
-    .default(3)
-    .volatile()
-    .description('至少经过几轮用户消息后才开始生成语义摘要'),
-  recapCooldownTurns: Schema.number()
-    .default(1)
-    .volatile()
-    .description('每隔几轮才更新语义摘要；1 表示每轮（默认每轮都更新）'),
-  recapSimilarityThreshold: Schema.number()
-    .default(0.9)
-    .volatile()
-    .description('新旧摘要相似度达到这个值时才沿用旧的一行（0–1，默认 0.9）'),
-  recapMaxWords: Schema.number()
-    .default(40)
-    .volatile()
-    .description('语义摘要的词预算；中文按字算'),
   recapModelChain: Schema.string()
     .default('')
     .volatile()
@@ -98,6 +70,10 @@ export const Config = Schema.object({
     .default(true)
     .volatile()
     .description('便于行动：先给结果和下一步，少铺垫，保留风险与失败条件'),
+  eli5: Schema.boolean()
+    .default(true)
+    .volatile()
+    .description('默认用 ELI5 的方式说话：说人话、少术语，用户要求时再深入讲解'),
   style: Schema.union(STYLE_VALUES)
     .volatile()
     .description('回复风格：default / professional / friendly / blunt / follow'),
