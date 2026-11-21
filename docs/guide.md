@@ -32,9 +32,12 @@ HMR 生效。
 |---|---|---|
 | `enabled` | `true` | 输入框预测开关 |
 | `recap` | `true` | 语义摘要开关：每轮用一次便宜模型写「现在到哪」 |
+| `recapProgress` | `true` | 实时进度开关：每 10 分钟把一条进度记录合并进「会话回顾」，本地生成 |
+| `recapStallSeconds` | `600` | 进度记录间隔（秒），60–3600 |
+| `pendingTurns` | `3` | 「待跟进」窗口：最近 N 轮，1–20；高级设置 |
 | `recapActivity` | `false` | 活动流水开关：读文件 / 跑命令 / 改代码，本地生成 |
 | `recapModelChain` | `''` | 摘要模型链，按顺序尝试 `provider/model`；留空自动挑便宜模型 |
-| `today` | `true` | 右侧栏 WDX Relief 页面里的「待跟进」清单 |
+| `defaultTab` | `recaps` | 右侧栏面板默认 Tab：`recaps` / `btw` |
 | `verbosity` | `low` | `low` / `medium` / `high`（旧值 `model` 仍兼容） |
 | `actionable` | `true` | 便于行动：先结果/下一步、保留风险 |
 | `eli5` | `true` | 默认用 ELI5 的方式说话，用户要求时再深入讲解 |
@@ -58,11 +61,14 @@ bundle 层只声明入口和输入层的开关，其余字段由 schema 默认�
       config:
         enabled: true
         recap: true
+        recapProgress: true
+        recapStallSeconds: 600
+        pendingTurns: 3
+        defaultTab: recaps
         toolRepair: true
         toolRepairLang: zh
         toolRepairMaxCorrections: 2
         recapActivity: false
-        today: true
 ```
 
 ## 输入预测
@@ -80,20 +86,23 @@ bundle 层只声明入口和输入层的开关，其余字段由 schema 默认�
 
 ## 输入框上的一行
 
-这一行是**逐轮**的，不是会话级的；它回答「这一轮在做什么、到哪了」。两个开关，默认只开语义摘要：
+这一行是**逐轮**的，不是会话级的；它回答「这一轮在做什么、到哪了」。三个开关，默认开实时进度和语义摘要：
 
 | 片段 | 来源 | 成本 |
 |---|---|---|
-| 活动流水 | `session.binding.eventSource` 里的 `tool/call`、`tool/result`、步骤事件 | 本地，零调用 |
+| 实时进度 | `session.binding.eventSource` 里的时间戳与阶段；每 `recapStallSeconds`（默认 600 秒）无新输出记一条 | 本地，零调用 |
+| 活动流水 | 同一窗口里的 `tool/call`、`tool/result`、步骤事件 | 本地，零调用 |
 | 语义摘要 | `POST /api/wdx-relief/recap`，Host 用便宜模型概括最近一轮 | 每轮一次便宜模型 |
+
+状态条把四种情况分开：进行中（蓝色脉冲点）、无新输出（警示色，超过阈值）、已完成（灰色对勾）、已取消 / 出错 / 已中断。静默出现后这一行会钉住到本轮结束，新事件恢复也不闪走；但状态条按实时输出判断，恢复后立刻回到「进行中」。普通轮次结束后不会常驻「已完成」：只有生成了语义摘要、开了活动流水、或这一轮曾无新输出时才保留完成态。行尾的「›」直接打开右侧栏的「会话回顾」并筛出进度记录。
 
 1. 固定注册在 `conversation.input.dock`（输入框上方），不再提供上下位置选项。
 2. 活动流水只读 `ctx.sessions.binding(sessionId).eventSource`；窗口变化时 React
    重算。**不写会话、不写命令日志、不注入 prompt**。
 3. 轮次结束后，客户端按 `sessionId + turn` 去重请求一次回顾。Host 只读
    `session.deriveMessages()`，取最近一轮真人用户/助手文本，门限固定为：
-   - 用户消息满 3 轮才开始（`minTurns`）；
-   - 每轮更新；新摘要与已显示的摘要词集合 Jaccard 相似度 ≥ 0.9 时沿用上一行；
+   - 从第 1 轮用户消息就开始（`minTurns` 默认 1）；
+   - 每轮更新；新摘要与已显示的摘要词集合 Jaccard 相似度 ≥ 0.9 时沿用上一行的文字，但历史仍保留当轮一条；
    - 词预算 40，中文按字、英文按词。
    这些阈值不再作为配置暴露。
 4. 模型链先按 `recapModelChain` 里的 `provider/model` 顺序尝试；裸模型 id 会先在默认 provider
@@ -109,13 +118,17 @@ bundle 层只声明入口和输入层的开关，其余字段由 schema 默认�
    右侧 WDX Relief 页面的「会话回顾」Tab 通过 `POST /api/wdx-relief/recaps` 读取；
    Tab 顶部显示条数，可「清空」当前会话的历史（body 带 `clear: true`）。
    重复摘要（重启后同一轮重新生成、文字没变）不会再记一条。
+7. 运行中每 `recapStallSeconds`（默认 600 秒 = 10 分钟）没有新输出，客户端把这一轮的轮次、最近动作、
+   总耗时和等待时长压成一条进度快照，`POST /api/wdx-relief/progress` 追加到同一份 `recaps.json`。
+   同一轮同一档只发一次；Host 再按 `(sessionId, turn, anchor, bucket)` 去重，刷新页面也不会重复。
+   进度记录和摘要共用「会话回顾」列表，顶部可按「全部 / 摘要 / 进度」筛选，打开期间每 30 秒静默刷新。
 
 这一行不读工作区文件，也不解释长报告的全部细节；它只概括最近一轮的要求与结果。
 语义摘要走 `ctx.llm.stream`，不 append 消息、不进入下一次模型请求。
 
 ## 旁问
 
-旁问不再是 composer 命令，而是右侧栏 WDX Relief 页面的「旁问」Tab；默认 Tab 是「待跟进」。
+旁问不再是 composer 命令，而是右侧栏 WDX Relief 页面的「旁问」Tab；面板默认落在「会话回顾」，可在设置里改。
 
 - 输入框和 composer 使用同一套视觉：圆角卡片、底部模型位、右侧圆形发送/停止按钮。按 <kbd>⌘/Ctrl + Enter</kbd> 也可以发送。
 - 底部模型位来自会话级模型目录（`ctx.modelDirectories`）。默认跟随当前会话模型；选中别的模型只影响这次旁问，**不会改变主会话模型**。宽度不够时模型名收成数据图标，只保留图标和下拉箭头。
@@ -129,29 +142,18 @@ bundle 层只声明入口和输入层的开关，其余字段由 schema 默认�
 
 ## 右侧栏 WDX Relief 页面
 
-插件在右侧栏注册一个独立页面（`sidebarRightTabs.register`，`kind: wdx-relief`），入口和 WDX Git 一样出现在右侧栏的工具列表（`guide.order 35`）。页面用三个 Tab：默认「待跟进」、「会话回顾」、「旁问」；后续小功能继续加 Tab，不平铺。
+插件在右侧栏注册一个独立页面（`sidebarRightTabs.register`，`kind: wdx-relief`），入口和 WDX Git 一样出现在右侧栏的工具列表（`guide.order 35`）。页面用两个 Tab：「会话回顾」、「旁问」，默认显示「会话回顾」（`defaultTab` 可改为 `btw`）。
 
-### 待跟进的事
+### 会话回顾、分组与筛选
 
-目标：把过去会话里「助手提醒过你、但你之后没有回应」的事整理成清单。
-
-- 取数只读尾部：同一工作区、14 天内、空闲超过 2 小时的会话，每个取最后一条助手消息（≤800 字）；
-  最后一条是用户消息的会话跳过——那是助手没回，不是用户漏了。
-- 确定性部分只做筛选，不算「有没有漏」；由一次模型调用（`POST /api/wdx-relief/today`）判断哪些需要你决定，
-  并要求它只输出 JSON、不许新增输入里没有的事。
-- **模型失败时退回关键词清单**（问句 + 「还未/未推送/等你确认」这类硬信号），响应带 `degraded: true`，
-  页面如实标注「模型没整理成功，这份是按关键词挑的」。
-- 结果按工作区 + 会话集合缓存 15 分钟；面板的刷新按钮带 `x-wdx-force: 1` 跳过缓存。跨会话重复的事由模型合并，最多 5 条。
-- 当前会话的 `cwd` 先取 live 会话，取不到再从会话列表里找，避免刚恢复的历史会话打不开。
-- 依赖 `ctx.sessionQuery`（base profile 已挂 `session-query-sqlite`）；缺失时显示「无法整理」。
-- 点条目用 `uiWorkspace.openSession()` 跳回原会话。
-- 每条右侧的「×」是**清掉**：记进 `$DSH_HOME/wdx-relief/followups.json`，之后不再出现在清单里，
-  旁边留一个「撤销」可放回。清掉只作用于面板，不删会话里的任何内容。
-- 去重口径是「会话 + 归一化文本」：标点、空白、大小写不参与比对；同一会话里模型换个说法（相似度 ≥0.6）
-  也算同一条，但英文词和数字必须一致，`PR #12` / `PR #13`、`v0.4.0` / `v0.5.0` 不会被合并。
-- 清掉 / 撤销分别走 `POST /api/wdx-relief/today/dismiss`、`POST .../restore`，返回 `{ changed }`；
-  清掉清单最多留 200 条，超出丢最旧的。
-- 过滤发生在返回前，服务端的模型结果缓存始终保留原样，所以清掉一条不会触发重新整理。
+- 按轮次分组：同一轮的进度记录和那一轮的摘要放在一组，组头显示「第 N 轮」、进度/摘要条数、结束时间和这一轮时长（如 10:32 · 30 分）。开始时间由进度记录的 `at - elapsedMs` 反推，摘要只能给出结束时间。
+- 组可以展开 / 折叠；默认展开最新一轮，点击组头切换。旧记录没有 turn 时归到「更早的记录」。
+- 支持「最新在前 / 最早在前」：组和组内记录一起反转；每条记录仍带自己的时间。选「最早在前」时，一轮里的阅读顺序是几次进度在前、摘要收尾。
+- 顶部按「全部 / 摘要 / 进度 / 待跟进」筛选，按钮带当前数量；进度行展开显示轮次、总耗时、无新输出时长、步数和最近动作。
+- **待跟进**：最近 `pendingTurns` 轮（默认 3，1–20，收在设置页「输入框上的一行 → 高级」）里，如果某轮停在助手提问（摘要记录 `kind: question` 或 `question` 非空），或者回复/摘要以「下一步 / 接下来 / 需要你 / 请你 / 等你」开头，组头标「待跟进」，可用「待跟进」筛选只看这些轮次；会话运行中不标（说明正在跑，不是等你）。判断用的是事件窗口里的**当前轮次**，不是历史里最大的 turn，所以新的一轮即使还没生成摘要，也不会把上一轮继续标成待跟进。这个标记只读当前会话的摘要记录，不扫其他会话、不调用模型。
+- 打开期间每 30 秒静默刷新一次（不闪骨架屏），也可以手动「刷新」；「清空」会先问一次，确认后删掉当前会话的全部摘要和进度记录。
+- 从输入框上方那一行点「›」跳进来时，默认落到「进度」筛选。
+- 进度记录纯本地生成，不调用模型；摘要和进度共用同一份历史，最多 300 条。
 
 ## 回复风格
 
@@ -207,7 +209,7 @@ Host 在 `ctx.systemPrompt` 注册：
 
 ## 实机验证记录（DSH 0.2.2-rc.1，历史配置页）
 
-- 侧边栏「插件」→ **WDX Relief** bundle 页出现配置区：功能开关（预测、待跟进）、输入框上的一行、回复方式、工具调用守卫；
+- 侧边栏「插件」→ **WDX Relief** bundle 页出现配置区：功能开关（预测）、输入框上的一行、回复方式、工具调用守卫；
 - 下拉框、开关、textarea 均可写入；关闭再打开设置后保持；`--dump-config` 能看到 `verbosity`、`actionable`、`eli5`、`style`、`customInstructions`；
 - Settings 导航不再出现「回复」，General 不再出现预测行（已迁移到插件配置）；
 - 输入框灰字出现、打字隐藏、清空重现，Tab 真正写入 Lexical；
@@ -226,9 +228,9 @@ Host 在 `ctx.systemPrompt` 注册：
 
 ## 0.4.0 验证
 
-- Host 日志出现 `POST /api/wdx-relief/recap`、`POST /api/wdx-relief/today` 与 `POST /api/wdx-relief/btw` 注册；
+- Host 日志出现 `POST /api/wdx-relief/recap`、`POST /api/wdx-relief/progress` 与 `POST /api/wdx-relief/btw` 注册；
 - 客户端注册面新增 `conversation.input.dock` / `conversation.composer.dock` 的 `wdx-turn-line-*` 与右侧栏 `sidebar.right.pane.tab` 的 `wdx-relief` 页面；
-- 旁问面板默认展示「待跟进」Tab，模型位读取 `ctx.modelDirectories`，选中只影响旁问；
+- 面板默认展示「会话回顾」Tab，旁问模型位读取 `ctx.modelDirectories`，选中只影响旁问；
 - `node --test` 覆盖回顾提取 / minTurns / cooldown / 相似度门限 / 模型链、旁问提示词/回答/错误/模型覆盖、今日清单、客户端事件推导与注册面；
 - 浏览器内实际轮次切换、两种 placement、旁问 Tab 与 Markdown 渲染尚未在本次会话中用浏览器控制复核。
 
@@ -236,7 +238,7 @@ Host 在 `ctx.systemPrompt` 注册：
 
 - 回复风格是 prompt 软约束，不是硬截断；复杂任务仍可能写长。
 - 语义摘要依赖一次模型调用；模型失败时退回本地短拼接，且**失败结果不缓存、不写历史**，下一轮会重试。活动流水不受影响。
-- 「会话回顾」历史存在本地 `$DSH_HOME/wdx-relief/recaps.json`，最多 300 条；换机器或清空该文件即清空历史。
+- 「会话回顾」的摘要和进度记录存在本地 `$DSH_HOME/wdx-relief/recaps.json`，最多 300 条；换机器或清空该文件即清空历史。
 - 旁问只把最近几轮文本作为背景；它不会读取工作区文件，也不会自动带上未提交的改动。
 - 旁问默认使用当前会话模型，也可以在面板底部选别的模型；选择只影响这一次/这一组旁问，不改主会话模型。
 - 没有实时 agent 时退回默认模型，两者都没有时返回面板错误。

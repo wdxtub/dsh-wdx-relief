@@ -1,6 +1,6 @@
 # WDX Relief
 
-WDX Relief reduces the everyday friction of using DeepSeek Harness. Seven features, all configured in the plugin's own settings below the bundle page (**Plugins → Installed plugins → WDX Relief**); nothing is added to the DSH Settings navigation.
+WDX Relief reduces the everyday friction of using DeepSeek Harness. Eight features, all configured in the plugin's own settings below the bundle page (**Plugins → Installed plugins → WDX Relief**); nothing is added to the DSH Settings navigation.
 
 ![WDX Relief configuration](bundle-config.webp)
 
@@ -14,17 +14,17 @@ After a turn, grey text in the composer guesses what you are about to send. Pres
 
 A per-turn line that answers "what is this turn doing, and where is it", always above the composer:
 
+- **Live progress** (on by default): after 10 minutes without new output, the line appears automatically with the turn number, latest action and waiting time; from then on it records one progress entry every 10 minutes in Session review. A status chip — running / no output / done / cancelled — keeps it distinct from the finished recap.
 - **Semantic recap** (on by default): a cheap model summarizes the latest turn every turn.
 - **Activity feed**: generated locally with zero model calls, off by default.
 
-The line never enters the model context, and generated recaps are kept in the WDX Relief panel for review.
+The line never enters the model context; recaps and progress entries are kept in Session review in the WDX Relief panel, starting from the first turn. The "›" at its end opens that tab filtered to progress.
 
 ### WDX Relief panel
 
-A right-sidebar page with three tabs:
+A right-sidebar page with two tabs, defaulting to Session review (configurable):
 
-- **Follow-ups** (default): things past sessions raised that you have not acted on. Click an item to jump back to that session; "×" clears an unwanted suggestion (undoable, local only).
-- **Session review**: every recap line generated in this session.
+- **Session review**: entries grouped by turn, with each turn's progress entries and recap together; the collapsible header shows the turn, counts, end time and turn duration. If any of the last N turns (3 by default, configurable under advanced settings) ends on a question or a "next step / you need" line, the group is marked "Follow up" and the filter can show only those turns. Switch between Newest first and Oldest first; filter by All / Summaries / Progress / Follow up; refresh every 30 seconds; confirm before clearing. Progress entries are derived locally with no model calls.
 - **Ask aside**: a composer-style card with its own model picker. The Q&A stays in the panel — not in the session, not in the command log, not in the model context, and it does not change the main session model.
 
 ### Reply style
@@ -50,7 +50,7 @@ In the DSH sidebar, go to **Plugins → Add plugin**, enter `dsh-wdx-relief`, th
 ## Requirements and limits
 
 - DSH Web profile; the plugin depends on the `connection`, `sessions`, and `tools` services.
-- A default model must be configured. Prediction, the semantic recap, Follow-ups, and Ask aside make model calls; the activity feed does not. The tool-call guard is zero-cost until it fires, then costs at most one extra model step (bounded by the correction limit).
+- A default model must be configured. Prediction, the semantic recap, and Ask aside make model calls; the activity feed, progress entries and the Follow up marker do not. The tool-call guard is zero-cost until it fires, then costs at most one extra model step (bounded by the correction limit).
 - Reply style is a soft prompt constraint, not a hard length limit.
 - Recaps are stored locally in `$DSH_HOME/wdx-relief/recaps.json` (up to 300 entries); clearing that file clears the history.
 - Ask aside keeps answers in panel memory only; closing the panel or switching sessions clears them.

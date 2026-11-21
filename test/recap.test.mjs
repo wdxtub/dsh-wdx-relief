@@ -220,19 +220,28 @@ test('minTurns defers the first summary and cooldownTurns spaces updates', async
 
 test('similarity gate keeps the displayed line across similar turns', async () => {
   let messages = [message('user', '修测试'), message('assistant', '已修好。')]
+  const appended = []
   const service = createRecapService({
     config: config({ minTurns: 1, cooldownTurns: 1, similarityThreshold: 0.7 }),
     sessions: { get: () => ({ seq: 1, deriveMessages: () => messages }) },
     llm: { stream: () => fakeStream(messages.length === 2 ? '修测试，已修好' : '修测试，已经修好') },
     defaultSelection: () => ({ provider: 'p', model: 'm' }),
+    history: { append: (entry) => { appended.push(entry); return true } },
   })
   const first = await service.recap('s1')
   assert.equal(first.recap.summary, '修测试，已修好')
+  assert.equal(appended.length, 1)
+  assert.equal(appended[0].turn, 1)
 
   messages = [message('user', '修测试'), message('assistant', '已修好。'), message('user', '再确认'), message('assistant', '还是好的。')]
   const second = await service.recap('s1')
   assert.equal(second.kept, true)
   assert.equal(second.recap.summary, '修测试，已修好')
+  // 文字沿用了上一轮，但第二轮仍然有自己的历史记录。
+  assert.equal(appended.length, 2)
+  assert.equal(appended[1].turn, 2)
+  assert.equal(appended[1].summary, '修测试，已修好')
+  assert.equal(appended[1].user, '再确认')
 })
 
 test('model chain tries configured refs before the default', async () => {
@@ -277,7 +286,7 @@ test('empty chain prefers cheap-looking catalog models before the default', asyn
 test('readRecapConfig clamps and defaults the advanced fields', () => {
   assert.deepEqual(readRecapConfig(config({ minTurns: 0, cooldownTurns: -1, similarityThreshold: 3, maxWords: 0 })), {
     enabled: true,
-    minTurns: 3,
+    minTurns: 1,
     cooldownTurns: 1,
     similarityThreshold: 0.9,
     maxWords: 40,

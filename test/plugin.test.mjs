@@ -5,7 +5,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { runInNewContext } from 'node:vm'
 
-import { BTW_PATH, Config, DISMISS_PATH, RECAP_PATH, RECAPS_PATH, RESTORE_PATH, ROUTE_PATH, TODAY_PATH, apply, inject, name } from '../index.js'
+import { BTW_PATH, Config, PROGRESS_PATH, RECAP_PATH, RECAPS_PATH, ROUTE_PATH, apply, inject, name } from '../index.js'
 
 // apply() 把回顾历史写进 $DSH_HOME；测试用临时目录，避免污染真实 home。
 process.env.DSH_HOME = mkdtempSync(join(tmpdir(), 'wdx-relief-test-'))
@@ -105,8 +105,11 @@ test('host plugin declares its route and config', () => {
   assert.equal(config.enabled.get(), true)
   assert.equal(config.recap.get(), true)
   assert.equal(config.recapActivity.get(), false)
+  assert.equal(config.recapProgress.get(), true)
+  assert.equal(config.recapStallSeconds.get(), 600)
+  assert.equal(config.pendingTurns.get(), 3)
   assert.equal(config.recapModelChain.get(), '')
-  assert.equal(config.today.get(), true)
+  assert.equal(config.defaultTab.get(), 'recaps')
   assert.equal(config.verbosity.get(), 'low')
   assert.equal(config.writingStyle.get(), false)
   assert.equal(config.baseStyle.get(), 'default')
@@ -123,47 +126,6 @@ test('apply mounts the tool-call repair listeners', () => {
   for (const name of ['tools/pre-execute', 'tools/post-execute', 'session/event', 'agent/turn-stopping', 'agent/pre-step']) {
     assert.ok(host.listeners().includes(name), name)
   }
-})
-
-test('today route degrades to unavailable without a session query service', async () => {
-  const host = createHostContext()
-  apply(host.ctx, { today: { get: () => true } })
-  const route = host.route(TODAY_PATH)
-  assert.equal(route.path, TODAY_PATH)
-  const response = await route.fetch(request({ sessionId: 'session-1' }, TODAY_PATH))
-  assert.equal(response.status, 200)
-  assert.deepEqual(await response.json(), { ok: true, data: { items: [], unavailable: true } })
-})
-
-test('dismiss and restore routes record cleared follow-ups', async () => {
-  const host = createHostContext()
-  apply(host.ctx, { today: { get: () => true } })
-
-  const dismiss = host.route(DISMISS_PATH)
-  assert.equal(dismiss.path, DISMISS_PATH)
-  assert.deepEqual(dismiss.methods, ['POST'])
-
-  const cleared = await dismiss.fetch(request({ sessionId: 'session-1', text: '把 tag 推到远端' }, DISMISS_PATH))
-  assert.equal(cleared.status, 200)
-  assert.deepEqual(await cleared.json(), { ok: true, data: { changed: true } })
-
-  const again = await dismiss.fetch(request({ sessionId: 'session-1', text: '把 tag 推到远端' }, DISMISS_PATH))
-  assert.deepEqual(await again.json(), { ok: true, data: { changed: false } })
-
-  const stored = JSON.parse(readFileSync(join(process.env.DSH_HOME, 'wdx-relief', 'followups.json'), 'utf8'))
-  assert.equal(stored.entries.length, 1)
-  assert.equal(stored.entries[0].text, '把 tag 推到远端')
-
-  const restore = host.route(RESTORE_PATH)
-  const restored = await restore.fetch(request({ sessionId: 'session-1', text: '把 tag 推到远端' }, RESTORE_PATH))
-  assert.deepEqual(await restored.json(), { ok: true, data: { changed: true } })
-
-  const empty = await restore.fetch(request({ sessionId: 'session-1', text: '把 tag 推到远端' }, RESTORE_PATH))
-  assert.deepEqual(await empty.json(), { ok: true, data: { changed: false } })
-
-  const invalid = await dismiss.fetch(request({ text: '把 tag 推到远端' }, DISMISS_PATH))
-  assert.equal(invalid.status, 400)
-  assert.equal((await invalid.json()).ok, false)
 })
 
 test('host route returns a prediction and then serves it from cache', async () => {
@@ -257,6 +219,58 @@ test('recaps route lists generated recap history for one session', async () => {
   assert.deepEqual((await cleared.json()).data.items, [])
   const afterClear = await route.fetch(request({ sessionId: 'session-1' }, RECAPS_PATH))
   assert.deepEqual((await afterClear.json()).data.items, [])
+})
+
+test('progress route appends one snapshot per turn and bucket', async () => {
+  const host = createHostContext()
+  apply(host.ctx, recapConfig())
+  const route = host.route(PROGRESS_PATH)
+  assert.equal(route.path, PROGRESS_PATH)
+  assert.deepEqual(route.methods, ['POST'])
+
+  const entry = {
+    turn: 2,
+    bucket: 1,
+    status: 'stalled',
+    summary: '第 2 轮 · 运行 job_output · 等待 10 分',
+    activity: '运行 job_output…',
+    elapsedMs: 700000,
+    silenceMs: 600000,
+    steps: 2,
+  }
+  const first = await route.fetch(request({ sessionId: 'session-1', entry }, PROGRESS_PATH))
+  assert.equal(first.status, 200)
+  assert.deepEqual(await first.json(), { ok: true, data: { appended: true } })
+
+  const again = await route.fetch(request({ sessionId: 'session-1', entry }, PROGRESS_PATH))
+  assert.deepEqual(await again.json(), { ok: true, data: { appended: false } })
+
+  const next = await route.fetch(request({
+    sessionId: 'session-1',
+    entry: { ...entry, bucket: 2, severity: 1, summary: '第 2 轮 · 运行 job_output · 等待 20 分' },
+  }, PROGRESS_PATH))
+  assert.deepEqual(await next.json(), { ok: true, data: { appended: true } })
+
+  const list = await host.route(RECAPS_PATH).fetch(request({ sessionId: 'session-1' }, RECAPS_PATH))
+  const items = (await list.json()).data.items
+  assert.equal(items.length, 2)
+  assert.equal(items[0].kind, 'progress')
+  assert.equal(items[0].bucket, 2)
+  assert.equal(items[0].turn, 2)
+  assert.equal(items[0].status, 'stalled')
+
+  const invalid = await route.fetch(request({
+    sessionId: 'session-1',
+    entry: { turn: 0, bucket: 1, summary: 'x' },
+  }, PROGRESS_PATH))
+  assert.equal(invalid.status, 400)
+  assert.equal((await invalid.json()).error.code, 'invalid-params')
+
+  const missing = await route.fetch(request({
+    sessionId: 'missing',
+    entry: entry,
+  }, PROGRESS_PATH))
+  assert.equal((await missing.json()).error.code, 'not-found')
 })
 
 test('recap route respects the toggle and unknown sessions', async () => {
@@ -368,7 +382,7 @@ test('client bundle registers the composer ghost prediction and settings page', 
   const tabTypes = []
   const openedTabs = []
   const form = {
-    getSnapshot: () => ({ status: 'ready', value: { enabled: true, recap: true, today: true }, writable: true }),
+    getSnapshot: () => ({ status: 'ready', value: { enabled: true, recap: true, defaultTab: 'recaps' }, writable: true }),
     subscribe: () => () => {},
     mutate: () => Promise.resolve(true),
   }
@@ -386,7 +400,7 @@ test('client bundle registers the composer ghost prediction and settings page', 
     },
     effect: (fn) => fn(),
     sidebarRight: {
-      openTab: (kind) => { openedTabs.push(kind) },
+      openTab: (kind, options) => { openedTabs.push({ kind, options }) },
     },
     sidebarRightTabs: {
       register: (options) => { tabTypes.push(options); return () => {} },
@@ -417,6 +431,7 @@ test('client bundle registers the composer ghost prediction and settings page', 
   assert.equal(tabTypes[0].guide[0].order, 35)
   assert.equal(registrations[0].options.key, 'wdx-relief')
   assert.equal(typeof registrations[0].component, 'function')
+  assert.equal(registrations[0].options.inject('session-1').defaultTab, 'recaps')
 
   const overlay = registrations[1].options
   assert.equal(overlay.id, 'wdx-prediction')
@@ -426,7 +441,13 @@ test('client bundle registers the composer ghost prediction and settings page', 
   const recap = registrations[2].options
   assert.equal(recap.id, 'wdx-turn-line-above')
   assert.equal(recap.order, 30)
-  assert.equal(recap.inject('session-1').hooks.settings.getSnapshot().value.recap, true)
+  const recapInjected = recap.inject('session-1')
+  assert.equal(recapInjected.hooks.settings.getSnapshot().value.recap, true)
+  assert.equal(typeof recapInjected.openProgress, 'function')
+  recapInjected.openProgress()
+  assert.equal(openedTabs[0].kind, 'wdx-relief')
+  assert.equal(openedTabs[0].options.params.wdxReliefTab, 'recaps')
+  assert.equal(openedTabs[0].options.params.wdxRecapFilter, 'progress')
 
   assert.equal(typeof client.BtwSection, 'function')
 
@@ -438,9 +459,12 @@ test('client bundle registers the composer ghost prediction and settings page', 
   const settings = injected.hooks.settings.getSnapshot()
   assert.equal(settings.enabled.text, 'true')
   assert.equal(settings.recap.text, 'true')
+  assert.equal(settings.recapProgress.text, 'true')
+  assert.equal(settings.recapStallSeconds.text, '600')
+  assert.equal(settings.pendingTurns.text, '3')
   assert.equal(typeof settings.recapActivity.text, 'string')
   assert.equal(settings.recapModelChain.text, '')
-  assert.equal(settings.today.text, 'true')
+  assert.equal(settings.defaultTab.text, 'recaps')
   assert.equal(settings.verbosity.text, 'low')
   assert.equal(settings.actionable.text, 'true')
   assert.equal(settings.eli5.text, 'true')
@@ -493,9 +517,12 @@ test('bundle settings page exposes the tool-call guard controls', () => {
     saving: false,
     enabled: field('true'),
     recap: field('true'),
+    recapProgress: field('true'),
+    recapStallSeconds: field('600'),
+    pendingTurns: field('3'),
     recapActivity: field('false'),
     recapModelChain: field(''),
-    today: field('true'),
+    defaultTab: field('recaps'),
     verbosity: field('low'),
     actionable: field('true'),
     eli5: field('true'),
@@ -528,7 +555,7 @@ test('bundle settings page exposes the tool-call guard controls', () => {
     for (const child of node.children || []) walk(child)
   })(tree)
 
-  for (const key of ['features', 'turnLine', 'reply', 'toolRepair', 'recap', 'recapActivity', 'modelChain', 'eli5', 'toolRepairLang', 'toolRepairMaxCorrections', 'toolRepairDebugLog']) {
+  for (const key of ['features', 'turnLine', 'reply', 'toolRepair', 'recap', 'recapProgress', 'stallSeconds', 'recapActivity', 'modelChain', 'eli5', 'toolRepairLang', 'toolRepairMaxCorrections', 'toolRepairDebugLog', 'defaultTab']) {
     assert.ok(keys.includes(key), key)
   }
   for (const key of ['recapTiming', 'recapReasoning', 'recapPlacement', 'minTurns', 'cooldownTurns', 'similarity', 'maxWords', 'length', 'writing']) {
@@ -571,7 +598,267 @@ test('turn line derives activity and summary from the event window', () => {
   assert.deepEqual([...localOnly.map((segment) => segment.key)], ['activity'])
 })
 
-test('relief panel renders today and btw sections without a live sidebar', () => {
+test('progress snapshots use the 10 minute bucket and stay compact', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+  const client = loaded.factory((id) => {
+    if (id === 'react') return { createElement() {}, useState() {}, useEffect() {}, useRef() {}, useLayoutEffect() {} }
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+
+  const entries = [
+    { type: 'event', event: { type: 'turn/start', seq: 1, time: 1000, data: { turn: 3 } } },
+    { type: 'event', event: { type: 'step/start', seq: 2, time: 1000, data: { turn: 3, step: 1 } } },
+    { type: 'event', event: { type: 'tool/call', seq: 3, time: 2000, data: { callId: 'c1', name: 'bash', arguments: '{"command":"job_output"}', turn: 3, step: 1 } } },
+  ]
+  const settings = { stallMs: 600000 }
+  const t = (key) => key
+  const first = client.progressEntryOf(client.deriveTurnView(entries, 603000), settings, t)
+  assert.equal(first.turn, 3)
+  assert.equal(first.bucket, 1)
+  assert.equal(first.status, 'stalled')
+  assert.equal(first.silenceMs, 600000)
+  assert.equal(first.elapsedMs, 602000)
+  assert.equal(first.steps, 1)
+  assert.equal(first.anchor, 2000)
+  assert.match(first.summary, /第 3 轮/)
+  assert.match(first.summary, /等待 10 分/)
+  assert.match(first.activity, /job_output/)
+
+  const second = client.progressEntryOf(client.deriveTurnView(entries, 1210000), settings, t)
+  assert.equal(second.bucket, 2)
+  assert.equal(second.silenceMs, 1200000)
+  assert.match(second.summary, /等待 20 分/)
+})
+
+test('recap entries group by turn and support both orders', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+  const client = loaded.factory((id) => {
+    if (id === 'react') return { createElement() {}, useState() {}, useEffect() {}, useRef() {}, useLayoutEffect() {} }
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+
+  const items = [
+    { sessionId: 's', seq: 1, kind: 'answered', turn: 1, at: 3000, summary: 'r1' },
+    { sessionId: 's', seq: 2, kind: 'progress', turn: 1, at: 1000, bucket: 1, anchor: 900, summary: 'p1' },
+    { sessionId: 's', seq: 2, kind: 'progress', turn: 1, at: 2000, bucket: 2, anchor: 900, summary: 'p2' },
+    { sessionId: 's', seq: 4, kind: 'progress', turn: 2, at: 4000, bucket: 1, anchor: 3500, elapsedMs: 3000, summary: 'p3' },
+    { sessionId: 's', seq: 5, kind: 'answered', turn: 2, at: 5000, summary: 'r2' },
+    { sessionId: 's', seq: 9, kind: 'answered', turn: null, at: 500, summary: 'old' },
+  ]
+
+  const desc = client.groupRecapEntries(items, 'desc')
+  assert.deepEqual([...desc.map((group) => group.key)], ['t:2', 't:1', 'u'])
+  assert.deepEqual([...desc[0].entries.map((item) => item.summary)], ['r2', 'p3'])
+  assert.deepEqual([...desc[1].entries.map((item) => item.summary)], ['r1', 'p2', 'p1'])
+  assert.equal(desc[1].firstAt, 1000)
+  assert.equal(desc[1].lastAt, 3000)
+  assert.equal(desc[0].firstAt, 1000)
+
+  const asc = client.groupRecapEntries(items, 'asc')
+  assert.deepEqual([...asc.map((group) => group.key)], ['t:1', 't:2', 'u'])
+  assert.deepEqual([...asc[0].entries.map((item) => item.summary)], ['p1', 'p2', 'r1'])
+  assert.deepEqual([...asc[1].entries.map((item) => item.summary)], ['p3', 'r2'])
+})
+
+test('recap history filters summaries and progress entries', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+
+  const progress = {
+    sessionId: 's1', seq: 2, kind: 'progress', turn: 2, bucket: 1, anchor: 2000, at: 1700000000000,
+    status: 'stalled', summary: '第 2 轮 · 运行 job_output · 等待 10 分',
+    activity: '运行 job_output…', elapsedMs: 700000, silenceMs: 600000, steps: 2,
+  }
+  const summary = {
+    sessionId: 's1', seq: 1, kind: 'answered', at: 1699999000000,
+    summary: '旧摘要', user: '改测试', assistant: '改好了',
+  }
+  let calls = 0
+  const react = {
+    createElement(type, props, ...children) { return { type, props: props || {}, children } },
+    useState(initial) {
+      calls += 1
+      if (calls === 1) return [{ status: 'ready', items: [progress, summary] }, () => {}]
+      if (calls === 2) return ['progress', () => {}]
+      if (calls === 3) return ['desc', () => {}]
+      if (calls === 4) return ['p:2:2:2000:1', () => {}]
+      if (calls === 5) return [true, () => {}]
+      return [initial, () => {}]
+    },
+    useEffect() {},
+    useRef(value) { return { current: value } },
+    useLayoutEffect() {},
+  }
+  const client = loaded.factory((id) => {
+    if (id === 'react') return react
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+
+  const section = client.RecapHistorySection({
+    sessionId: 's1',
+    t: (key) => key,
+    initialFilter: 'progress',
+    initialFilterRevision: 1,
+  })
+  const json = JSON.stringify(section)
+  assert.match(json, /wdxp-filter/)
+  assert.match(json, /wdxp-filterActive/)
+  assert.match(json, /wdxp-group/)
+  assert.match(json, /wdxp-groupHead/)
+  assert.match(json, /wdxp-groupTime/)
+  assert.match(json, /第 2 轮/)
+  assert.match(json, /进度 1/)
+  assert.match(json, /最新在前/)
+  assert.match(json, /最早在前/)
+  assert.match(json, /job_output/)
+  assert.match(json, /总耗时/)
+  assert.match(json, /无新输出/)
+  assert.match(json, /等待/)
+  assert.match(json, /wdxp-confirm/)
+  assert.match(json, /确认清空/)
+  assert.doesNotMatch(json, /旧摘要/)
+})
+
+test('turn view reports silence, status and progress segments', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+  const client = loaded.factory((id) => {
+    if (id === 'react') return { createElement() {}, useState() {}, useEffect() {}, useRef() {}, useLayoutEffect() {} }
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+
+  const t = (key) => key
+  const entries = [
+    { type: 'event', event: { type: 'turn/start', seq: 1, time: 1000, data: { turn: 2 } } },
+    { type: 'event', event: { type: 'step/start', seq: 2, time: 1000, data: { turn: 2, step: 1 } } },
+    { type: 'event', event: { type: 'tool/call', seq: 3, time: 2000, data: { callId: 'c1', name: 'bash', arguments: '{"command":"job_output"}', turn: 2, step: 1 } } },
+  ]
+  const view = client.deriveTurnView(entries, 100000)
+  assert.equal(view.running, true)
+  assert.equal(view.status, 'running')
+  assert.equal(view.lastEventAt, 2000)
+  assert.equal(view.silenceMs, 98000)
+  assert.equal(view.steps, 1)
+  assert.equal(view.actions[0].done, false)
+
+  const stalled = client.turnStatusInfo(view, t, true)
+  assert.equal(stalled.kind, 'stalled')
+
+  const runningSegments = client.buildTurnSegments(view, { progress: true, stallMs: 45000, activity: false, summary: true }, t, null)
+  assert.deepEqual([...runningSegments.map((segment) => segment.key)], ['progress', 'activity'])
+  assert.match(runningSegments[0].text, /等待/)
+  assert.match(runningSegments[1].text, /job_output/)
+
+  const completedView = client.deriveTurnView([
+    ...entries,
+    { type: 'event', event: { type: 'tool/result', seq: 4, time: 3000, data: { turn: 2, message: { source: { callId: 'c1' } } } } },
+    { type: 'event', event: { type: 'turn/end', seq: 5, time: 9000, data: { turn: 2, reason: { kind: 'completed' } } } },
+  ], 10000)
+  const completedStatus = client.turnStatusInfo(completedView, t, false)
+  assert.equal(completedStatus.kind, 'done')
+  const completedSegments = client.buildTurnSegments(completedView, { progress: true, stallMs: 45000, activity: false, summary: true }, t, { text: '改完测试' })
+  assert.deepEqual([...completedSegments.map((segment) => segment.key)], ['progress', 'summary'])
+  assert.match(completedSegments[0].text, /用时/)
+})
+
+test('line settings default to a 10 minute progress interval', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+  const client = loaded.factory((id) => {
+    if (id === 'react') return { createElement() {}, useState() {}, useEffect() {}, useRef() {}, useLayoutEffect() {} }
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+
+  const defaults = client.lineSettings(undefined)
+  assert.equal(defaults.progress, true)
+  assert.equal(defaults.stallMs, 600000)
+
+  const configured = client.lineSettings({ value: { recapProgress: false, recapStallSeconds: '90', recapActivity: true, recap: false } })
+  assert.equal(configured.progress, false)
+  assert.equal(configured.stallMs, 90000)
+  assert.equal(configured.activity, true)
+  assert.equal(configured.summary, false)
+
+  const clamped = client.lineSettings({ value: { recapStallSeconds: 1 } })
+  assert.equal(clamped.stallMs, 600000)
+  assert.equal(client.formatDuration(8000, (key) => key), '8 秒')
+  assert.equal(client.formatDuration(125000, (key) => key), '2 分 5 秒')
+  assert.equal(client.formatDuration(3720000, (key) => key), '1 小时 2 分')
+})
+
+test('turn line renders a silent running turn with a progress shortcut', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+
+  const entries = [
+    { type: 'event', event: { type: 'turn/start', seq: 1, time: 1000, data: { turn: 2 } } },
+    { type: 'event', event: { type: 'tool/call', seq: 2, time: 2000, data: { callId: 'c1', name: 'bash', arguments: '{"command":"job_output"}', turn: 2, step: 1 } } },
+  ]
+  let calls = 0
+  const react = {
+    createElement(type, props, ...children) { return { type, props: props || {}, children } },
+    useState(initial) {
+      calls += 1
+      return [calls === 1 ? entries : initial, () => {}]
+    },
+    useEffect() {},
+    useRef(value) { return { current: value } },
+    useLayoutEffect() {},
+  }
+  const client = loaded.factory((id) => {
+    if (id === 'react') return react
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+
+  let opened = 0
+  const line = client.TurnRecapDock({
+    sessionId: 'session-1',
+    t: (key) => key,
+    readFeed: () => null,
+    openProgress: () => { opened += 1 },
+    useSession: () => true,
+    useInput: () => ({ draft: '', attachmentIds: [] }),
+    useSettings: () => ({ value: { recapProgress: true, recapStallSeconds: 60, recap: false } }),
+  })
+  const json = JSON.stringify(line)
+  assert.match(json, /wdxt-row/)
+  assert.match(json, /data-state":"stalled/)
+  assert.match(json, /无新输出/)
+  assert.match(json, /job_output/)
+  assert.match(json, /wdxt-open/)
+  ;(function walk(node) {
+    if (!node || typeof node !== 'object') return
+    if (Array.isArray(node)) {
+      node.forEach(walk)
+      return
+    }
+    if (node.props && node.props.key === 'open' && typeof node.props.onClick === 'function') node.props.onClick()
+    for (const child of node.children || []) walk(child)
+  })(line)
+  assert.equal(opened, 1)
+})
+
+test('relief panel shows recap and aside tabs, defaulting to recap', () => {
   const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
   let loaded = null
   const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
@@ -591,7 +878,7 @@ test('relief panel renders today and btw sections without a live sidebar', () =>
   })
 
   const t = (key) => key
-  const panel = client.ReliefPanel({ sessionId: 'session-1', t, openSession() {} })
+  const panel = client.ReliefPanel({ sessionId: 'session-1', t })
   assert.equal(panel.type, 'div')
   assert.equal(panel.props.className, 'wdxp-page')
   assert.equal(typeof panel.children[0][0].type, 'function')
@@ -599,12 +886,18 @@ test('relief panel renders today and btw sections without a live sidebar', () =>
   assert.equal(tabs.type, 'div')
   assert.equal(tabs.props.role, 'tablist')
   var tabButtons = tabs.children[0]
-  assert.equal(tabButtons.length, 4)
-  assert.equal(tabButtons[1].props.id, 'wdxp-tab-recaps')
-  assert.equal(panel.children[0][2].props.id, 'wdxp-pane-untouched')
-  assert.equal(panel.children[0][3].props.id, 'wdxp-pane-recaps')
+  assert.equal(tabButtons.length, 2)
+  assert.equal(tabButtons[0].props.id, 'wdxp-tab-recaps')
+  assert.equal(tabButtons[0].props['aria-selected'], true)
+  assert.equal(panel.children[0][2].props.id, 'wdxp-pane-recaps')
+  assert.equal(panel.children[0][2].children[0].type, client.RecapHistorySection)
   assert.equal(panel.children[0][3].children[0], null)
-  assert.equal(panel.children[0][4].children[0].type, client.BtwSection)
+
+  const btwPanel = client.ReliefPanel({ sessionId: 'session-1', t, defaultTab: 'btw' })
+  var btwTabs = btwPanel.children[0][1].children[0]
+  assert.equal(btwTabs[1].props['aria-selected'], true)
+  assert.equal(btwPanel.children[0][2].children[0], null)
+  assert.equal(btwPanel.children[0][3].children[0].type, client.BtwSection)
 
   const recaps = client.RecapHistorySection({ sessionId: 'session-1', t })
   assert.equal(recaps.type, 'div')
@@ -615,29 +908,35 @@ test('relief panel renders today and btw sections without a live sidebar', () =>
   assert.equal(btw.children[0][0].type, 'div')
 })
 
-test('relief panel renders ready items without a missing helper', () => {
+test('recap history marks the latest turn as waiting for a reply', () => {
   const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
   let loaded = null
   const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
   runInNewContext(code, sandbox)
 
-  let stateCalls = 0
+  const items = [
+    {
+      sessionId: 's1', seq: 2, kind: 'progress', turn: 1, bucket: 1, anchor: 1000, at: 1700000001000,
+      status: 'stalled', summary: '第 1 轮 · 运行 job_output · 等待 10 分', elapsedMs: 600000, silenceMs: 600000, steps: 1,
+    },
+    {
+      sessionId: 's1', seq: 3, kind: 'question', turn: 1, at: 1700000002000,
+      summary: '第 1 轮 · 等你确认', user: '跑完了吗', question: '要继续吗？',
+    },
+  ]
+  let calls = 0
   const react = {
-    createElement(type, props, ...children) { return { type, props, children } },
+    createElement(type, props, ...children) { return { type, props: props || {}, children } },
     useState(initial) {
-      stateCalls += 1
-      if (stateCalls === 2) {
-        return [{
-          status: 'ready',
-          items: [{ text: '需要你确认', sessionId: 'session-1', idleHours: 3 }],
-          degraded: false,
-          detail: '',
-        }, () => {}]
-      }
+      calls += 1
+      if (calls === 1) return [{ status: 'ready', items: items }, () => {}]
+      if (calls === 2) return ['all', () => {}]
+      if (calls === 3) return ['desc', () => {}]
+      if (calls === 4) return ['s:3', () => {}]
       return [initial, () => {}]
     },
     useEffect() {},
-    useRef() { return { current: null } },
+    useRef(value) { return { current: value } },
     useLayoutEffect() {},
   }
   const client = loaded.factory((id) => {
@@ -646,42 +945,48 @@ test('relief panel renders ready items without a missing helper', () => {
     throw new Error(`unexpected require: ${id}`)
   })
 
-  const t = (key) => key
-  const panel = client.ReliefPanel({ sessionId: 'session-1', t, openSession() {} })
-  const json = JSON.stringify(panel)
-  assert.match(json, /需要你确认/)
-  assert.match(json, /3 小时/)
-  assert.match(json, /wdxp-follow/)
-  assert.match(json, /wdxp-clear/)
-  assert.match(json, /清掉，不再出现在列表里/)
-  assert.doesNotMatch(json, /wdxp-undo/)
+  const waiting = client.RecapHistorySection({ sessionId: 's1', t: (key) => key, running: false, currentTurn: 1 })
+  const waitingJson = JSON.stringify(waiting)
+  assert.match(waitingJson, /wdxp-groupPending/)
+  assert.match(waitingJson, /待跟进/)
+  assert.match(waitingJson, /要继续吗？/)
+
+  calls = 0
+  const running = client.RecapHistorySection({ sessionId: 's1', t: (key) => key, running: true, currentTurn: 1 })
+  assert.doesNotMatch(JSON.stringify(running), /wdxp-groupPending/)
+
+  calls = 0
+  const newer = client.RecapHistorySection({ sessionId: 's1', t: (key) => key, running: false, currentTurn: 4 })
+  assert.doesNotMatch(JSON.stringify(newer), /wdxp-groupPending/)
+
+  calls = 0
+  const inWindow = client.RecapHistorySection({ sessionId: 's1', t: (key) => key, running: false, currentTurn: 2, pendingTurns: 3 })
+  assert.match(JSON.stringify(inWindow), /wdxp-groupPending/)
 })
 
-test('relief panel offers undo after an item is cleared', () => {
+test('recap history marks a next-step turn as pending', () => {
   const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
   let loaded = null
   const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
   runInNewContext(code, sandbox)
 
-  let stateCalls = 0
+  const items = [{
+    sessionId: 's1', seq: 4, kind: 'answered', turn: 1, at: 1700000003000,
+    summary: '第 1 轮 · 下一步：基于 v0.7.0 创建 GitHub Release',
+    assistant: '下一步：基于 v0.7.0 创建 GitHub Release',
+  }]
+  let calls = 0
   const react = {
-    createElement(type, props, ...children) { return { type, props, children } },
+    createElement(type, props, ...children) { return { type, props: props || {}, children } },
     useState(initial) {
-      stateCalls += 1
-      if (stateCalls === 2) {
-        return [{
-          status: 'empty',
-          items: [],
-          degraded: false,
-          detail: '',
-          lastCleared: { text: '需要你确认', sessionId: 'session-1' },
-          clearError: '',
-        }, () => {}]
-      }
+      calls += 1
+      if (calls === 1) return [{ status: 'ready', items: items }, () => {}]
+      if (calls === 2) return ['all', () => {}]
+      if (calls === 3) return ['desc', () => {}]
       return [initial, () => {}]
     },
     useEffect() {},
-    useRef() { return { current: null } },
+    useRef(value) { return { current: value } },
     useLayoutEffect() {},
   }
   const client = loaded.factory((id) => {
@@ -690,13 +995,11 @@ test('relief panel offers undo after an item is cleared', () => {
     throw new Error(`unexpected require: ${id}`)
   })
 
-  const t = (key) => key
-  const panel = client.ReliefPanel({ sessionId: 'session-1', t, openSession() {} })
-  const json = JSON.stringify(panel)
-  assert.match(json, /wdxp-undo/)
-  assert.match(json, /已清掉这条/)
-  assert.match(json, /撤销/)
-  assert.match(json, /最近两周没有待你决定的事/)
+  const section = client.RecapHistorySection({ sessionId: 's1', t: (key) => key, running: false, currentTurn: 1 })
+  const json = JSON.stringify(section)
+  assert.match(json, /wdxp-groupPending/)
+  assert.match(json, /待跟进/)
+  assert.match(json, /创建 GitHub Release/)
 })
 
 test('accepting a prediction does not permanently dismiss it', () => {

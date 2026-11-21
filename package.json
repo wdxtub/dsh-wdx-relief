@@ -1,7 +1,7 @@
 {
   "name": "dsh-wdx-relief",
-  "version": "0.7.0",
-  "description": "Take the friction out of daily DSH work: predicted next messages, a live one-line turn recap above the composer, and sidebar side questions with a composer-style model picker that stay out of the model context.",
+  "version": "0.8.0",
+  "description": "Take the friction out of daily DSH work: predicted next messages, a live turn line above the composer, per-turn recaps/progress with follow-up markers, and sidebar side questions that stay out of the model context.",
   "type": "module",
   "main": "index.js",
   "exports": {
@@ -66,6 +66,8 @@
     "prediction",
     "session-recap",
     "turn-recap",
+    "progress",
+    "stall-detection",
     "side-question",
     "reply-style",
     "web-ui",

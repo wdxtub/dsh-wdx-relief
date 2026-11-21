@@ -2,7 +2,7 @@
  * dsh-wdx-relief 网页客户端。
  *
  * 四块 UI：
- * 1. 右侧栏 WDX Relief 页面：默认「待跟进的事」，另一个 Tab 是「旁问」。
+ * 1. 右侧栏 WDX Relief 页面：默认「会话回顾」，另一个 Tab 是「旁问」。
  * 2. `conversation.input.overlay`：在输入框里显示「下一句消息」灰字预测，
  *    Tab 填入（Codex 式），点击也可以填入。
  * 3. `conversation.input.dock` / `conversation.composer.dock`：输入框上方或下方的一行，
@@ -37,11 +37,9 @@ window.__ModuleLoader__.load({
     var NS = 'wdx-relief'
     var RPC_PATH = '/api/wdx-relief/predict'
     var RECAP_PATH = '/api/wdx-relief/recap'
-    var TODAY_PATH = '/api/wdx-relief/today'
     var RECAPS_PATH = '/api/wdx-relief/recaps'
+    var PROGRESS_PATH = '/api/wdx-relief/progress'
     var BTW_PATH = '/api/wdx-relief/btw'
-    var DISMISS_PATH = '/api/wdx-relief/today/dismiss'
-    var RESTORE_PATH = '/api/wdx-relief/today/restore'
     var TOOLREPAIR_LANGS = ['zh', 'en']
     var MAX_CUSTOM_CHARS = 2000
     var SWITCH = primitives && primitives.Switch
@@ -54,6 +52,7 @@ window.__ModuleLoader__.load({
 
     var VERBOSITY_OPTIONS = ['low', 'medium', 'high']
     var STYLE_OPTIONS = ['default', 'professional', 'friendly', 'blunt', 'follow']
+    var DEFAULT_TAB_VALUES = ['recaps', 'btw']
 
     // ------------------------------------------------------------------ CSS
 
@@ -86,12 +85,33 @@ window.__ModuleLoader__.load({
       '.wdxs-fallback{border:0;padding:0;margin:0}',
       '.wdxt-root{box-sizing:border-box;width:calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));max-width:calc(var(--dsh-composer-card-max-width) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));margin:0 auto;padding:0 var(--dsh-composer-dock-inset)}',
       '.wdxt-root[data-placement="below"]{width:auto;max-width:none;flex:1 1 auto;min-width:0;padding:0}',
-      '.wdxt-row{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);min-height:28px;align-items:center;gap:6px;padding:4px 6px 4px 10px;font-size:12px;line-height:18px;display:flex}',
+      '.wdxt-row{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);min-height:28px;align-items:center;gap:6px;padding:4px 6px 4px 10px;font-size:12px;line-height:18px;display:flex;animation:wdxt-fade .18s ease-out}',
+      '@keyframes wdxt-fade{from{opacity:0;transform:translateY(2px)}to{opacity:1;transform:none}}',
+      '@media (prefers-reduced-motion:reduce){.wdxt-row{animation:none}}',
+      '.wdxt-row[data-state="running"]{border-color:var(--dsw-alias-state-business-tertiary)}',
+      '.wdxt-row[data-state="stalled"]{border-color:var(--dsw-alias-state-warn-secondary)}',
       '.wdxt-seg{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}',
+      '.wdxt-progress{color:var(--dsw-alias-label-tertiary);flex:0 1 auto;min-width:0;font-variant-numeric:tabular-nums}',
+      '.wdxt-progressStalled{color:var(--dsw-alias-state-warn-label)}',
       '.wdxt-activity{color:var(--dsw-alias-label-tertiary);flex:0 1 auto;max-width:46%}',
       '.wdxt-summary{color:var(--dsw-alias-label-secondary);flex:1 1 auto;min-width:0}',
       '.wdxt-sep{color:var(--dsw-alias-border-l3);flex:none}',
+      '.wdxt-status{box-sizing:border-box;height:18px;border-radius:999px;flex:none;align-items:center;gap:4px;padding:0 6px;font-size:11px;line-height:16px;display:inline-flex;border:.5px solid var(--dsw-alias-border-l2);white-space:nowrap}',
+      '.wdxt-status[data-kind="running"]{color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-bg-base)}',
+      '.wdxt-status[data-kind="stalled"]{color:var(--dsw-alias-state-warn-label);border-color:var(--dsw-alias-state-warn-secondary);background:var(--dsw-alias-bg-base)}',
+      '.wdxt-status[data-kind="done"]{color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-base)}',
+      '.wdxt-status[data-kind="error"]{color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-secondary);background:var(--dsw-alias-bg-base)}',
+      '.wdxt-status[data-kind="aborted"],.wdxt-status[data-kind="interrupted"],.wdxt-status[data-kind="forked"]{color:var(--dsw-alias-label-caption);background:var(--dsw-alias-bg-base)}',
+      '.wdxt-status[data-kind="blocked"],.wdxt-status[data-kind="maxTokens"]{color:var(--dsw-alias-state-warn-label);border-color:var(--dsw-alias-state-warn-secondary);background:var(--dsw-alias-bg-base)}',
+      '.wdxt-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none;animation:wdxt-pulse 1.4s ease-in-out infinite}',
+      '.wdxt-dotStatic{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none;opacity:.65}',
+      '@keyframes wdxt-pulse{0%,100%{opacity:.35;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}',
+      '@media (prefers-reduced-motion:reduce){.wdxt-dot{animation:none;opacity:1}}',
+      '.wdxt-check{font-size:10px;line-height:1;flex:none}',
       '.wdxt-close{width:16px;height:16px;color:var(--dsw-alias-label-caption);cursor:pointer;opacity:0;background:0 0;border:0;border-radius:999px;flex:none;place-items:center;padding:0;font:inherit;font-size:12px;line-height:1;display:grid}',
+      '.wdxt-open{width:20px;height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:.7;background:0 0;border:0;border-radius:var(--dsw-radius-sm);flex:none;place-items:center;padding:0;font:inherit;font-size:14px;line-height:1;display:grid}',
+      '@media (hover:hover){.wdxt-open:hover{opacity:1;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}}',
+      '.wdxt-open:focus-visible{opacity:1;outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:1px}',
       '.wdxt-row:hover .wdxt-close,.wdxt-close:focus-visible{opacity:1}',
       '@media (hover:hover){.wdxt-close:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}}',
       '.wdxa-pane{flex-direction:column;gap:8px;display:flex}',
@@ -125,22 +145,14 @@ window.__ModuleLoader__.load({
       '.wdxa-error{color:var(--dsw-alias-state-error-primary);font-size:12px;line-height:18px;overflow-wrap:anywhere}',
       '.wdxa-note{color:var(--dsw-alias-label-tertiary);margin:2px 0 0;font-size:12px;line-height:18px}',
       '.wdxp-page{box-sizing:border-box;height:100%;min-height:0;flex-direction:column;gap:14px;padding:14px 14px 24px;display:flex;color:var(--dsw-alias-label-primary);overflow:auto}',
-      '.wdxp-tabs{box-sizing:border-box;align-items:center;gap:18px;border-bottom:.5px solid var(--dsw-alias-border-l3);display:flex}',
+      '.wdxp-tabs{box-sizing:border-box;align-items:center;gap:14px;border-bottom:.5px solid var(--dsw-alias-border-l3);display:flex}',
       '.wdxp-tab{color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:0;margin:0;padding:2px 0 9px;font:inherit;font-size:13px;font-weight:500;line-height:18px;position:relative;align-items:center;gap:6px;display:inline-flex}',
       '@media (hover:hover){.wdxp-tab:hover{color:var(--dsw-alias-label-primary)}}',
       '.wdxp-tab:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:2px;border-radius:var(--dsw-radius-sm)}',
       '.wdxp-tabActive{color:var(--dsw-alias-label-primary)}',
       '.wdxp-tabActive:after{content:"";position:absolute;right:0;bottom:-1px;left:0;background:var(--dsw-alias-state-business-primary);border-radius:2px;height:2px}',
-      '.wdxp-tabCount{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-module-platform);border-radius:999px;padding:0 5px;font-size:10px;line-height:15px}',
       '.wdxp-pane{min-width:0;flex-direction:column;gap:8px;display:flex}',
       '.wdxp-pane[hidden]{display:none}',
-      '.wdxp-section{flex-direction:column;gap:8px;display:flex}',
-      '.wdxp-sectionHead{min-height:24px;align-items:center;gap:6px;display:flex}',
-      '.wdxp-sectionTitle{color:var(--dsw-alias-label-secondary);font-size:12px;font-weight:600;line-height:18px}',
-      '.wdxp-count{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-secondary);background:var(--dsw-alias-bg-module-platform);border-radius:999px;padding:1px 6px;font-size:11px;line-height:16px}',
-      '.wdxp-iconBtn{width:24px;height:24px;color:var(--dsw-alias-label-tertiary);cursor:pointer;background:0 0;border:0;border-radius:var(--dsw-radius-sm);flex:none;place-items:center;margin-left:auto;padding:0;display:grid}',
-      '@media (hover:hover){.wdxp-iconBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}}',
-      '.wdxp-iconBtn:disabled{opacity:.5;cursor:default}',
       '.wdxp-body{min-width:0}',
       '.wdxp-rows{flex-direction:column;gap:8px;display:flex}',
       '.wdxp-list{flex-direction:column;gap:4px;margin:0;padding:0;list-style:none;display:flex}',
@@ -150,20 +162,35 @@ window.__ModuleLoader__.load({
       '.wdxp-row:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:-1px}',
       '.wdxp-rowText{overflow-wrap:anywhere;white-space:normal;flex:1;min-width:0;font-size:13px;line-height:19px}',
       '.wdxp-rowMeta{color:var(--dsw-alias-label-caption);white-space:nowrap;font-variant-numeric:tabular-nums;flex:none;font-size:11px;line-height:19px}',
-      '.wdxp-follow{position:relative}',
-      '.wdxp-follow .wdxp-row{padding:9px 34px 9px 12px;transition:background-color .12s ease}',
-      '.wdxp-clear{position:absolute;right:6px;top:50%;width:22px;height:22px;color:var(--dsw-alias-label-caption);cursor:pointer;background:0 0;border:0;border-radius:var(--dsw-radius-sm);place-items:center;opacity:.55;padding:0;display:grid;transform:translateY(-50%);transition:opacity .12s ease,color .12s ease,background-color .12s ease}',
-      '.wdxp-follow:hover .wdxp-clear,.wdxp-follow:focus-within .wdxp-clear{opacity:1}',
-      '@media (hover:hover){.wdxp-clear:hover{color:var(--dsw-alias-label-primary);background:var(--dsw-alias-interactive-bg-hover)}}',
-      '.wdxp-clear:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:1px}',
-      '.wdxp-undo{box-sizing:border-box;width:100%;align-items:center;justify-content:space-between;gap:10px;margin-top:4px;padding:6px 12px;border-radius:var(--dsw-radius-sm);background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-tertiary);font-size:12px;line-height:18px;display:flex}',
       '.wdxp-note{color:var(--dsw-alias-label-tertiary);align-items:center;gap:6px;margin:2px 0 0;font-size:12px;line-height:18px;display:flex}',
       '.wdxp-link{color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;padding:0;font:inherit;font-size:12px;line-height:18px;text-decoration:underline}',
       '@media (hover:hover){.wdxp-link:hover{color:var(--dsw-alias-label-primary)}}',
-      '.wdxp-degraded{color:var(--dsw-alias-label-caption);overflow-wrap:anywhere;margin:6px 0 0;font-size:11px;line-height:16px}',
+      '.wdxp-confirm{background:var(--dsw-alias-bg-module-platform);border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-sm);align-items:center;flex-wrap:wrap;gap:6px 10px;padding:6px 10px;display:flex}',
+      '.wdxp-confirmText{color:var(--dsw-alias-label-secondary);flex:1;min-width:0;font-size:11px;line-height:16px}',
+      '.wdxp-danger{color:var(--dsw-alias-state-error-primary)}',
       '.wdxh-row{align-items:flex-start;flex:none}',
-      '.wdxh-toolbar{align-items:center;gap:8px;min-height:18px;display:flex}',
-      '.wdxh-count{color:var(--dsw-alias-label-caption);margin-right:auto;font-size:11px;line-height:16px}',
+      '.wdxh-toolbar{align-items:center;flex-wrap:wrap;gap:6px 8px;min-height:18px;display:flex}',
+      '.wdxp-filters{align-items:center;flex-wrap:wrap;gap:4px;display:flex}',
+      '.wdxp-filter{box-sizing:border-box;height:22px;border-radius:999px;background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-tertiary);cursor:pointer;border:.5px solid transparent;align-items:center;gap:4px;padding:0 7px;font:inherit;font-size:11px;line-height:16px;display:inline-flex}',
+      '@media (hover:hover){.wdxp-filter:hover{color:var(--dsw-alias-label-primary)}}',
+      '.wdxp-filter:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:1px}',
+      '.wdxp-filterActive{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base)}',
+      '.wdxp-filterCount{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-caption);font-size:10px}',
+      '.wdxh-kind{color:var(--dsw-alias-label-caption);background:var(--dsw-alias-bg-base);border-radius:4px;flex:none;margin-top:1px;padding:0 5px;font-size:10px;line-height:16px}',
+      '.wdxp-groups{flex-direction:column;gap:6px;margin:0;padding:0;list-style:none;display:flex}',
+      '.wdxp-group{border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);min-width:0;overflow:hidden}',
+      '.wdxp-groupHead{box-sizing:border-box;width:100%;border:0;background:0 0;color:inherit;font:inherit;text-align:left;cursor:pointer;flex-wrap:wrap;align-items:center;gap:4px 6px;padding:7px 9px;display:flex}',
+      '@media (hover:hover){.wdxp-groupHead:hover{background:var(--dsw-alias-interactive-bg-hover)}}',
+      '.wdxp-groupHead:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:-1px}',
+      '.wdxp-groupTitle{color:var(--dsw-alias-label-primary);white-space:nowrap;text-overflow:ellipsis;flex:0 1 auto;min-width:0;font-size:12px;line-height:18px;font-weight:600;overflow:hidden}',
+      '.wdxp-groupCount{color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-base);border-radius:4px;flex:none;padding:0 5px;font-size:10px;line-height:16px;font-variant-numeric:tabular-nums}',
+      '.wdxp-groupPending{color:var(--dsw-alias-state-warn-label);background:var(--dsw-alias-bg-base);border-radius:4px;flex:none;padding:0 5px;font-size:10px;line-height:16px}',
+      '.wdxp-groupTime{color:var(--dsw-alias-label-caption);white-space:nowrap;font-variant-numeric:tabular-nums;flex:none;margin-left:auto;font-size:10px;line-height:16px}',
+      '.wdxp-groupCaret{color:var(--dsw-alias-label-caption);flex:none;font-size:10px;line-height:1}',
+      '.wdxp-groupBody{border-top:.5px solid var(--dsw-alias-border-l3);padding:4px 6px 6px}',
+      '.wdxp-groupList{margin-top:2px}',
+      '.wdxp-groupBody .wdxp-row{background:var(--dsw-alias-bg-base)}',
+      '.wdxh-count{color:var(--dsw-alias-label-caption);font-size:11px;line-height:16px}',
       '.wdxh-detail{border:.5px solid var(--dsw-alias-border-l3);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-base);max-height:260px;flex-direction:column;gap:6px;margin-top:2px;padding:8px 10px;display:flex;overflow:auto}',
       '.wdxh-line{color:var(--dsw-alias-label-secondary);overflow-wrap:anywhere;white-space:pre-wrap;margin:0;font-size:12px;line-height:18px}',
       '.wdxh-label{color:var(--dsw-alias-label-caption);margin-right:4px;font-size:11px}',
@@ -209,9 +236,15 @@ window.__ModuleLoader__.load({
       'settings.title': '显示预测消息',
       'settings.description': '根据对话预测你接下来要发送的消息',
       'settings.turnLine': '输入框上的一行',
-      'settings.turnLine.note': '这一行只是界面提示，不进入模型上下文；活动流水本地生成，语义摘要会调用一次便宜模型。',
+      'settings.turnLine.note': '这一行只是界面提示，不进入模型上下文；实时进度和活动流水本地生成，语义摘要会调用一次便宜模型。',
       'settings.recap.title': '语义摘要',
       'settings.recap.description': '每轮用一次便宜模型，写一行「现在到哪」',
+      'settings.recapProgress.title': '实时进度',
+      'settings.recapProgress.description': '长时间没有新输出时，每 10 分钟在「会话回顾」里记一条进度；和摘要放在同一列表里，可筛选',
+      'settings.recapStallSeconds.title': '进度记录间隔（秒）',
+      'settings.recapStallSeconds.description': '多少秒没有新输出后开始记录一条进度，之后每隔这么久再记一条；默认 600 秒 = 10 分钟',
+      'settings.pendingTurns.title': '待跟进窗口（最近 N 轮）',
+      'settings.pendingTurns.description': '在「会话回顾」里把最近这么多轮的问题/下一步标成待跟进；默认 3',
       'settings.recapActivity.title': '活动流水',
       'settings.recapActivity.description': '正在读文件、跑命令、改代码；本地生成，零模型调用（默认关闭）',
       'settings.advanced': '高级（一般不用改）',
@@ -220,7 +253,7 @@ window.__ModuleLoader__.load({
       'settings.recapModelChain.description': '按顺序尝试 provider/model；留空自动挑便宜模型，全部失败退回当前默认模型',
       'settings.recapModelChain.placeholder': 'deepseek-v4-flash, deepseek-chat',
       'settings.btwHint': '提示：右侧 WDX Relief 面板的「旁问」Tab 可以直接问当前模型，底部可以选旁问模型；问答不会进入主上下文。',
-      'settings.summary': '预测下一句，输入框上给一行进度；右侧面板整理待跟进的事、回看历史摘要，并可旁问且不污染上下文。',
+      'settings.summary': '预测下一句，输入框上给一行实时进度；右侧面板按轮次看摘要、进度和待跟进，并可旁问且不污染上下文。',
       'reply.group.toolRepair': '工具调用守卫',
       'settings.toolRepair.title': '工具调用泄漏守卫',
       'settings.toolRepair.description': '模型把工具调用写成正文、这一步没有工具卡却正常结束时，当场检测并在同一轮内纠正重发',
@@ -233,10 +266,27 @@ window.__ModuleLoader__.load({
       'settings.toolRepairDebugLog.title': '诊断日志',
       'settings.toolRepairDebugLog.description': '输出检测、拦截与修复过程日志（默认关闭）',
       'turn.pending': '还没回复',
-      'turn.dismiss': '收起这一行',
+      'turn.dismiss': '本轮不再显示这一行',
       'turn.thinking': '思考中…',
       'turn.answering': '正在回复…',
       'turn.tool': '调用工具…',
+      'turn.status.running': '进行中',
+      'turn.status.stalled': '无新输出',
+      'turn.status.done': '已完成',
+      'turn.status.aborted': '已取消',
+      'turn.status.error': '出错',
+      'turn.status.blocked': '已拦截',
+      'turn.status.interrupted': '已中断',
+      'turn.status.maxTokens': '输出上限',
+      'turn.status.forked': '已分叉',
+      'turn.runningFor': '第 {turn} 轮 · 已进行 {duration}',
+      'turn.took': '第 {turn} 轮 · 用时 {duration}',
+      'turn.waitingFor': '等待 {duration}',
+      'turn.progressHint': '每 10 分钟在「会话回顾」记一条进度',
+      'duration.seconds': '{s} 秒',
+      'duration.minutes': '{m} 分 {s} 秒',
+      'duration.minuteOnly': '{m} 分',
+      'duration.hours': '{h} 小时 {m} 分',
       'turn.verb.read': '读取',
       'turn.verb.write': '修改',
       'turn.verb.command': '运行',
@@ -248,33 +298,48 @@ window.__ModuleLoader__.load({
       'turn.verb.ask': '等你回答',
       'turn.verb.skill': '加载技能',
       'turn.verb.other': '调用',
-      'settings.today.title': '整理待跟进的事',
-      'settings.today.description': '把过去会话里提醒过你、但你还没处理的事整理成一小份清单',
+      'settings.defaultTab.title': '默认 Tab',
+      'settings.defaultTab.description': '打开右侧 WDX Relief 面板时先显示哪个 Tab；默认「会话回顾」',
+      'settings.defaultTab.recaps': '会话回顾',
+      'settings.defaultTab.btw': '旁问',
       'panel.title': 'WDX Relief',
-      'panel.guide': '整理待跟进的事，也可以随手旁问',
+      'panel.guide': '按轮次看进度与摘要，也可以随手旁问',
       'panel.refresh': '刷新',
-      'panel.retry': '重试',
-      'panel.empty': '最近两周没有待你决定的事',
-      'panel.unavailable': '当前 profile 没有启用会话查询，无法整理',
-      'panel.error': '整理失败，稍后再试。',
-      'panel.degraded': '模型没整理成功，这份是按关键词挑的',
-      'panel.ageShort': '{hours} 小时',
-      'section.untouched': '待跟进',
-      'panel.clear': '清掉',
-      'panel.clearLabel': '清掉，不再出现在列表里',
-      'panel.cleared': '已清掉这条',
-      'panel.undo': '撤销',
-      'panel.clearFailed': '没清掉，再试一次',
-      'panel.emptyCleared': '最近的事都清掉了',
       'section.recaps': '会话回顾',
-      'panel.recapEmpty': '还没有生成过摘要；聊到第三轮就会出现第一条',
+      'panel.recapEmpty': '还没有生成过摘要或进度记录；聊过一轮，或运行中长时间没有新输出时就会出现',
+      'panel.recapNoSession': '先打开一个会话',
       'panel.recapError': '回顾历史读取失败',
       'panel.recapRouteMissing': '回顾历史路由没加载；重启 DSH 后再试',
       'panel.recapCount': '共 {count} 条',
       'panel.recapClear': '清空',
+      'panel.recapClearConfirm': '删除当前会话的全部摘要和进度记录？',
+      'panel.recapClearYes': '确认清空',
+      'panel.recapClearNo': '取消',
       'panel.recapRequest': '要求',
       'panel.recapReply': '回复',
       'panel.recapQuestion': '待回答',
+      'panel.recapFilterAll': '全部',
+      'panel.recapFilterSummary': '摘要',
+      'panel.recapFilterProgress': '进度',
+      'panel.recapTagSummary': '摘要',
+      'panel.recapTagProgress': '进度',
+      'panel.recapFilterEmpty': '这个筛选下还没有记录',
+      'panel.recapUnknownTurn': '更早的记录',
+      'panel.recapOrderDesc': '最新在前',
+      'panel.recapOrderAsc': '最早在前',
+      'panel.recapGroupProgress': '进度 {count}',
+      'panel.recapGroupSummary': '摘要 {count}',
+      'panel.recapPending': '待跟进',
+      'panel.recapFilterPending': '待跟进',
+      'panel.recapPendingEmpty': '目前没有待跟进的轮次',
+      'panel.recapPendingHint': '这一轮结束时留下了问题或下一步',
+      'progress.turn': '第 {turn} 轮',
+      'progress.turnLabel': '轮次',
+      'progress.elapsedLabel': '总耗时',
+      'progress.stepsLabel': '步数',
+      'progress.current': '现在',
+      'progress.entry': '第 {turn} 轮 · {activity} · 等待 {duration}',
+      'progress.open': '查看进度',
       'section.btw': '旁问',
       'btw.placeholder': '问点什么…',
       'btw.ask': '问',
@@ -329,9 +394,15 @@ window.__ModuleLoader__.load({
       'settings.title': 'Show predicted messages',
       'settings.description': 'Predict what you might send next based on the conversation',
       'settings.turnLine': 'Line above the composer',
-      'settings.turnLine.note': 'This line is UI only and never enters the model context. The activity stream is local; the semantic summary makes one cheap-model call.',
+      'settings.turnLine.note': 'This line is UI only and never enters the model context. Live progress and the activity stream are local; the semantic summary makes one cheap-model call.',
       'settings.recap.title': 'Semantic summary',
       'settings.recap.description': 'Every turn, one cheap-model line describing where things stand',
+      'settings.recapProgress.title': 'Live progress',
+      'settings.recapProgress.description': 'When a turn runs without output, record a progress entry every 10 minutes in Session review; it shares one filtered list with summaries',
+      'settings.recapStallSeconds.title': 'Progress interval (seconds)',
+      'settings.recapStallSeconds.description': 'How long without new output before the first progress entry, then one per interval; default 600 seconds = 10 minutes',
+      'settings.pendingTurns.title': 'Follow-up window (recent turns)',
+      'settings.pendingTurns.description': 'Mark questions / next steps from this many recent turns as Follow up in Session review; default 3',
       'settings.recapActivity.title': 'Activity stream',
       'settings.recapActivity.description': 'Reading files, running commands, editing code; local, no model call (off by default)',
       'settings.advanced': 'Advanced (rarely needed)',
@@ -340,7 +411,7 @@ window.__ModuleLoader__.load({
       'settings.recapModelChain.description': 'Try provider/model in order. Empty picks cheap models automatically, then falls back to the current default',
       'settings.recapModelChain.placeholder': 'deepseek-v4-flash, deepseek-chat',
       'settings.btwHint': 'Tip: the Aside tab in the WDX Relief panel asks the current model; pick a model at the bottom. The exchange never enters the model context.',
-      'settings.summary': 'Predict the next message, keep a live line above the composer, and use the right panel for unanswered items, recap history, and side questions that stay out of context.',
+      'settings.summary': 'Predict the next message, keep a live progress line above the composer, and use the right panel for per-turn summaries, progress and follow-ups, and side questions that stay out of context.',
       'reply.group.toolRepair': 'Tool-call guard',
       'settings.toolRepair.title': 'Tool-call leak guard',
       'settings.toolRepair.description': 'When a tool call is written as text, produces no tool card, yet the turn closes normally: detect it and inject a correction in the same turn',
@@ -353,10 +424,27 @@ window.__ModuleLoader__.load({
       'settings.toolRepairDebugLog.title': 'Diagnostic log',
       'settings.toolRepairDebugLog.description': 'Log detection, denials and repairs (off by default)',
       'turn.pending': 'no reply yet',
-      'turn.dismiss': 'Hide this line',
+      'turn.dismiss': 'Hide this line for this turn',
       'turn.thinking': 'Thinking…',
       'turn.answering': 'Replying…',
       'turn.tool': 'Running a tool…',
+      'turn.status.running': 'Running',
+      'turn.status.stalled': 'No output',
+      'turn.status.done': 'Done',
+      'turn.status.aborted': 'Cancelled',
+      'turn.status.error': 'Failed',
+      'turn.status.blocked': 'Blocked',
+      'turn.status.interrupted': 'Interrupted',
+      'turn.status.maxTokens': 'Token limit',
+      'turn.status.forked': 'Forked',
+      'turn.runningFor': 'Turn {turn} · {duration} elapsed',
+      'turn.took': 'Turn {turn} · {duration}',
+      'turn.waitingFor': 'waiting {duration}',
+      'turn.progressHint': 'One progress entry every 10 minutes in Session review',
+      'duration.seconds': '{s}s',
+      'duration.minutes': '{m}m {s}s',
+      'duration.minuteOnly': '{m}m',
+      'duration.hours': '{h}h {m}m',
       'turn.verb.read': 'Read',
       'turn.verb.write': 'Edit',
       'turn.verb.command': 'Run',
@@ -368,33 +456,48 @@ window.__ModuleLoader__.load({
       'turn.verb.ask': 'Waiting on you',
       'turn.verb.skill': 'Load skill',
       'turn.verb.other': 'Call',
-      'settings.today.title': 'Collect your follow-ups',
-      'settings.today.description': 'Turn reminders from past sessions that you have not followed up on into a short list',
+      'settings.defaultTab.title': 'Default tab',
+      'settings.defaultTab.description': 'Which tab the WDX Relief panel shows first; Session review by default',
+      'settings.defaultTab.recaps': 'Session review',
+      'settings.defaultTab.btw': 'Aside',
       'panel.title': 'WDX Relief',
-      'panel.guide': 'Collect the follow-ups you dropped, and ask aside',
+      'panel.guide': 'Review per-turn progress and recaps, and ask aside',
       'panel.refresh': 'Refresh',
-      'panel.retry': 'Retry',
-      'panel.empty': 'Nothing waiting on you in the last two weeks',
-      'panel.unavailable': 'This profile has no session query service, so there is nothing to collect',
-      'panel.error': 'Could not collect; try again later.',
-      'panel.degraded': 'The model did not finish; this list is keyword-picked',
-      'panel.ageShort': '{hours}h',
-      'section.untouched': 'Follow-ups',
-      'panel.clear': 'Clear',
-      'panel.clearLabel': 'Clear, do not show again',
-      'panel.cleared': 'Cleared',
-      'panel.undo': 'Undo',
-      'panel.clearFailed': 'Could not clear; try again',
-      'panel.emptyCleared': 'Everything recent has been cleared',
       'section.recaps': 'Recaps',
-      'panel.recapEmpty': 'No summary yet; one will appear after the third turn',
+      'panel.recapEmpty': 'No summary or progress yet; one appears after the first turn, or when a turn runs without output for a long time',
+      'panel.recapNoSession': 'Open a session first',
       'panel.recapError': 'Could not read recap history',
       'panel.recapRouteMissing': 'The recap history route is not loaded; restart DSH and try again',
       'panel.recapCount': '{count} entries',
       'panel.recapClear': 'Clear',
+      'panel.recapClearConfirm': 'Delete every summary and progress entry in this session?',
+      'panel.recapClearYes': 'Clear all',
+      'panel.recapClearNo': 'Cancel',
       'panel.recapRequest': 'Asked',
       'panel.recapReply': 'Replied',
       'panel.recapQuestion': 'Waiting on',
+      'panel.recapFilterAll': 'All',
+      'panel.recapFilterSummary': 'Summaries',
+      'panel.recapFilterProgress': 'Progress',
+      'panel.recapTagSummary': 'Summary',
+      'panel.recapTagProgress': 'Progress',
+      'panel.recapFilterEmpty': 'No entries under this filter',
+      'panel.recapUnknownTurn': 'Earlier entries',
+      'panel.recapOrderDesc': 'Newest first',
+      'panel.recapOrderAsc': 'Oldest first',
+      'panel.recapGroupProgress': 'Progress {count}',
+      'panel.recapGroupSummary': 'Summaries {count}',
+      'panel.recapPending': 'Follow up',
+      'panel.recapFilterPending': 'Follow up',
+      'panel.recapPendingEmpty': 'No turn needs a follow-up',
+      'panel.recapPendingHint': 'This turn ended with a question or a next step',
+      'progress.turn': 'Turn {turn}',
+      'progress.turnLabel': 'Turn',
+      'progress.elapsedLabel': 'Elapsed',
+      'progress.stepsLabel': 'Steps',
+      'progress.current': 'Now',
+      'progress.entry': 'Turn {turn} · {activity} · waiting {duration}',
+      'progress.open': 'View progress',
       'section.btw': 'Aside',
       'btw.placeholder': 'Ask anything…',
       'btw.ask': 'Ask',
@@ -490,91 +593,8 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * 一次「待跟进的事」RPC。
-     * 返回 { items } / { unavailable } / { disabled }；网络或服务失败返回 { error }。
-     */
-    async function requestToday(sessionId, signal, force) {
-      var headers = { 'content-type': 'application/json' }
-      if (force) headers['x-wdx-force'] = '1'
-      var response
-      try {
-        response = await fetch(TODAY_PATH, {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: headers,
-          body: JSON.stringify({ sessionId: sessionId }),
-          signal: signal,
-        })
-      } catch (error) {
-        var reason = error && error.name === 'AbortError' ? '请求被取消' : String((error && error.message) || error)
-        return { error: true, message: '请求失败：' + reason }
-      }
-      var text = ''
-      try {
-        text = await response.text()
-      } catch (error) {
-        return { error: true, message: 'HTTP ' + response.status + ' · 读取响应失败' }
-      }
-      var body = null
-      try {
-        body = text === '' ? null : JSON.parse(text)
-      } catch (error) {
-        var snippet = text.replace(/\s+/g, ' ').slice(0, 140)
-        return { error: true, message: 'HTTP ' + response.status + ' · ' + (snippet || '空响应') }
-      }
-      if (!body || body.ok !== true) {
-        var failure = body && body.error ? body.error : {}
-        var detail = typeof failure.message === 'string' && failure.message !== '' ? failure.message : 'HTTP ' + response.status
-        return { error: true, message: detail }
-      }
-      var data = body.data || {}
-      if (data.unavailable) return { unavailable: true }
-      if (data.disabled) return { disabled: true }
-      var items = Array.isArray(data.items) ? data.items : []
-      return {
-        items: items.filter(function (item) {
-          return item && typeof item.text === 'string' && item.text !== '' && typeof item.sessionId === 'string'
-        }),
-        degraded: data.degraded === true,
-        detail: typeof data.detail === 'string' ? data.detail : '',
-        hidden: typeof data.hidden === 'number' ? data.hidden : 0,
-      }
-    }
-
-    /**
-     * 记录 / 撤销「清掉」：只动本地清掉清单，不删会话内容。
-     * 返回 { changed } 或 { error, message }。
-     */
-    async function requestFollowup(path, sessionId, text) {
-      var response
-      try {
-        response = await fetch(path, {
-          method: 'POST',
-          credentials: 'same-origin',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ sessionId: sessionId, text: text }),
-        })
-      } catch (error) {
-        return { error: true, message: '请求失败：' + String((error && error.message) || error) }
-      }
-      var body = null
-      try {
-        body = await response.json()
-      } catch (error) {
-        return { error: true, message: 'HTTP ' + response.status + ' · 读取响应失败' }
-      }
-      if (!body || body.ok !== true) {
-        var failure = body && body.error ? body.error : {}
-        var detail = typeof failure.message === 'string' && failure.message !== '' ? failure.message : 'HTTP ' + response.status
-        return { error: true, message: detail }
-      }
-      var data = body.data || {}
-      return { changed: data.changed === true }
-    }
-
-    /**
      * 一次旁问 RPC。
-     * 返回 { answer } 或 { error, message }；取消由调用方根据 AbortError 处理。
+     * 返回 { items } / { unavailable } / { disabled }；网络或服务失败返回 { error }。
      */
     async function requestBtw(sessionId, question, selection, signal) {
       var payload = { sessionId: sessionId, question: question }
@@ -655,6 +675,22 @@ window.__ModuleLoader__.load({
         items: items.filter(function (item) {
           return item && typeof item.summary === 'string' && item.summary !== ''
         }),
+      }
+    }
+
+
+    /** 追加一条运行中的进度快照；失败静默，不打扰主任务。 */
+    async function requestProgress(sessionId, entry, signal) {
+      try {
+        await fetch(PROGRESS_PATH, {
+          method: 'POST',
+          credentials: 'same-origin',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({ sessionId: sessionId, entry: entry }),
+          signal: signal,
+        })
+      } catch (error) {
+        // 断网、超时或路由未加载都按「这条没记上」处理，下一条继续。
       }
     }
 
@@ -1061,12 +1097,37 @@ window.__ModuleLoader__.load({
       return typeof data.turn === 'number' ? data.turn : 0
     }
 
+    /** turn/end 的 reason 归一成界面状态；未知或旧格式按正常结束处理。 */
+    function turnStatusOfReason(reason) {
+      var kind = reason && typeof reason.kind === 'string' ? reason.kind : ''
+      if (kind === 'completed' || kind === 'stop' || kind === '') return 'done'
+      if (kind === 'aborted' || kind === 'legacy') return 'aborted'
+      if (kind === 'error') return 'error'
+      if (kind === 'blocked') return 'blocked'
+      if (kind === 'max-tokens') return 'maxTokens'
+      if (kind === 'interrupted') return 'interrupted'
+      if (kind === 'forked') return 'forked'
+      return 'done'
+    }
+
+    function turnStatusLabel(status, t) {
+      if (status === 'running') return tr(t, 'turn.status.running', '进行中')
+      if (status === 'done') return tr(t, 'turn.status.done', '已完成')
+      if (status === 'aborted') return tr(t, 'turn.status.aborted', '已取消')
+      if (status === 'error') return tr(t, 'turn.status.error', '出错')
+      if (status === 'blocked') return tr(t, 'turn.status.blocked', '已拦截')
+      if (status === 'interrupted') return tr(t, 'turn.status.interrupted', '已中断')
+      if (status === 'maxTokens') return tr(t, 'turn.status.maxTokens', '输出上限')
+      if (status === 'forked') return tr(t, 'turn.status.forked', '已分叉')
+      return tr(t, 'turn.status.done', '已完成')
+    }
+
     /**
      * 从事件窗口里推导当前这一轮。
      * @param {Array<object>} entries - `binding.eventSource.getSnapshot().entries`
      * @param {number} now - 当前时间，用来在运行中累计耗时
      * @param {{ running?: boolean }} [options]
-     * @returns {{ turn: number, running: boolean, startedAt: number, elapsedMs: number, actions: Array<object>, tool: object|null, reasoning: string, phase: string }}
+     * @returns {{ turn: number, running: boolean, startedAt: number, elapsedMs: number, lastEventAt: number, silenceMs: number, endedAt: number, endReason: object|null, status: string, steps: number, actions: Array<object>, tool: object|null, reasoning: string, phase: string }}
      */
     function deriveTurnView(entries, now, options) {
       var list = Array.isArray(entries) ? entries : []
@@ -1091,7 +1152,7 @@ window.__ModuleLoader__.load({
           }
         }
         if (anchor === -1) {
-          return { turn: 0, running: false, startedAt: 0, elapsedMs: 0, actions: [], tool: null, reasoning: '', phase: 'idle' }
+          return { turn: 0, running: false, startedAt: 0, elapsedMs: 0, lastEventAt: 0, silenceMs: 0, endedAt: 0, endReason: null, status: 'idle', steps: 0, actions: [], tool: null, reasoning: '', phase: 'idle' }
         }
         while (anchor > 0 && eventTurn(eventOf(list[anchor - 1])) === turn) anchor -= 1
       }
@@ -1100,6 +1161,8 @@ window.__ModuleLoader__.load({
       var startedAt = typeof first.time === 'number' ? first.time : (typeof now === 'number' ? now : Date.now())
       var lastTime = startedAt
       var endedAt = 0
+      var endReason = null
+      var steps = 0
       var actions = []
       var tool = null
       var reasoning = ''
@@ -1117,6 +1180,7 @@ window.__ModuleLoader__.load({
         if (typeof event.time === 'number') lastTime = event.time
 
         if (event.type === 'step/start') {
+          steps += 1
           phase = 'thinking'
           reasoning = ''
         } else if (event.type === 'tool/call') {
@@ -1128,7 +1192,12 @@ window.__ModuleLoader__.load({
         } else if (event.type === 'tool/result') {
           var source = objectOf(objectOf(data.message).source)
           var resultId = source.callId
-          if (tool !== null && (resultId === undefined || resultId === tool.callId)) {
+          if (typeof resultId === 'string') {
+            for (var actionIndex = 0; actionIndex < actions.length; actionIndex += 1) {
+              if (actions[actionIndex].callId === resultId) actions[actionIndex].done = true
+            }
+            if (tool !== null && resultId === tool.callId) phase = 'tool-done'
+          } else if (tool !== null) {
             tool.done = true
             phase = 'tool-done'
           }
@@ -1155,24 +1224,93 @@ window.__ModuleLoader__.load({
           phase = 'answering'
         } else if (event.type === 'turn/end') {
           endedAt = lastTime
+          endReason = data.reason && typeof data.reason === 'object' ? data.reason : null
           phase = 'done'
         }
       }
 
       var running = endedAt === 0 && !(options && options.running === false)
       if (endedAt === 0 && options && options.running === false) endedAt = lastTime
-      var elapsedMs = Math.max(0, (endedAt > 0 ? endedAt : (typeof now === 'number' ? now : Date.now())) - startedAt)
+      var nowMs = typeof now === 'number' ? now : Date.now()
+      var elapsedMs = Math.max(0, (endedAt > 0 ? endedAt : nowMs) - startedAt)
+      var silenceMs = running ? Math.max(0, nowMs - lastTime) : 0
+      var status = running ? 'running' : (endReason === null ? 'interrupted' : turnStatusOfReason(endReason))
 
       return {
         turn: turn,
         running: running,
         startedAt: startedAt,
         elapsedMs: elapsedMs,
+        lastEventAt: lastTime,
+        silenceMs: silenceMs,
+        endedAt: endedAt,
+        endReason: endReason,
+        status: status,
+        steps: steps,
         actions: actions,
         tool: tool,
         reasoning: latestReasoningLine(reasoning),
         phase: phase,
       }
+    }
+
+    /** 把毫秒压成「2 分 10 秒」；t 只负责单位，数值格式保持稳定。 */
+    function formatDuration(ms, t) {
+      var seconds = typeof ms === 'number' && isFinite(ms) ? Math.max(0, Math.round(ms / 1000)) : 0
+      if (seconds < 60) return trf(t, 'duration.seconds', { s: seconds }, seconds + ' 秒')
+      var minutes = Math.floor(seconds / 60)
+      var rest = seconds % 60
+      if (minutes < 60) {
+        if (rest === 0) return trf(t, 'duration.minuteOnly', { m: minutes }, minutes + ' 分')
+        return trf(t, 'duration.minutes', { m: minutes, s: rest }, minutes + ' 分 ' + rest + ' 秒')
+      }
+      var hours = Math.floor(minutes / 60)
+      return trf(t, 'duration.hours', { h: hours, m: minutes % 60 }, hours + ' 小时 ' + minutes % 60 + ' 分')
+    }
+
+    /** user/message 的 data 有的包在 message 里，有的直接是消息体。 */
+    function messageOf(data) {
+      if (data && data.message && typeof data.message === 'object') return data.message
+      return data && typeof data === 'object' ? data : {}
+    }
+
+    function userPromptOf(data) {
+      var message = messageOf(data)
+      if (!Array.isArray(message.content)) return ''
+      var source = message.source
+      if (source && typeof source === 'object' && source.kind !== 'user' && source.kind !== 'user-question-reply') return ''
+      var parts = []
+      for (var index = 0; index < message.content.length; index += 1) {
+        var block = message.content[index]
+        if (!block || block.type !== 'text' || typeof block.text !== 'string' || block.text.trim() === '') continue
+        parts.push(block.text.trim())
+      }
+      return clipText(parts.join('\n'), 200)
+    }
+
+    function StatusChip(props) {
+      var children = []
+      if (props.kind === 'running') {
+        children.push(h('span', { key: 'dot', className: 'wdxt-dot' }))
+      } else if (props.kind === 'stalled') {
+        children.push(h('span', { key: 'dot', className: 'wdxt-dotStatic' }))
+      } else if (props.kind === 'done') {
+        children.push(h('span', { key: 'check', className: 'wdxt-check', 'aria-hidden': 'true' }, '✓'))
+      }
+      children.push(h('span', { key: 'label' }, props.label))
+      return h('span', { className: 'wdxt-status', 'data-kind': props.kind, role: props.live === true ? 'status' : undefined, 'aria-live': props.live === true ? 'polite' : undefined }, children)
+    }
+
+    function turnStatusInfo(view, t, stalled) {
+      if (!view || view.turn === 0) return null
+      if (view.running) {
+        return {
+          kind: stalled ? 'stalled' : 'running',
+          label: stalled ? tr(t, 'turn.status.stalled', '无新输出') : tr(t, 'turn.status.running', '进行中'),
+        }
+      }
+      var status = typeof view.status === 'string' && view.status !== 'idle' ? view.status : 'done'
+      return { kind: status, label: turnStatusLabel(status, t) }
     }
 
     /** 最近两个动作连成流水；没有工具时用阶段兜底。 */
@@ -1198,24 +1336,76 @@ window.__ModuleLoader__.load({
      * 组装这一行的各个片段。每个片段只由自己的开关控制，互不牵连。
      * @returns {Array<{ key: string, text: string, className: string }>}
      */
-    function buildTurnSegments(view, settings, t, summary) {
+    function buildTurnSegments(view, settings, t, summary, pinned) {
       var segments = []
       if (!view || view.turn === 0) return segments
-      if (settings.activity) {
+      var progress = settings.progress === true
+      var stalled = view.running && progress && typeof view.silenceMs === 'number' && view.silenceMs >= settings.stallMs
+      var keepActivity = stalled || pinned === true
+      if (progress) {
+        var duration = formatDuration(view.elapsedMs, t)
+        var text = view.running
+          ? trf(t, 'turn.runningFor', { turn: view.turn, duration: duration }, '第 ' + view.turn + ' 轮 · 已进行 ' + duration)
+          : trf(t, 'turn.took', { turn: view.turn, duration: duration }, '第 ' + view.turn + ' 轮 · 用时 ' + duration)
+        if (stalled) {
+          var waitingMs = Math.floor(view.silenceMs / settings.stallMs) * settings.stallMs
+          text += RECAP_SEP + trf(t, 'turn.waitingFor', { duration: formatDuration(waitingMs, t) }, '等待 ' + formatDuration(waitingMs, t))
+        }
+        segments.push({ key: 'progress', text: text, className: stalled ? 'wdxt-progress wdxt-progressStalled' : 'wdxt-progress' })
+      }
+      var activityShown = false
+      if (settings.activity || keepActivity) {
         var activity = activityText(view, t)
-        if (activity !== '') segments.push({ key: 'activity', text: activity, className: 'wdxt-activity' })
+        if (activity !== '') {
+          segments.push({ key: 'activity', text: activity, className: 'wdxt-activity' })
+          activityShown = true
+        }
       }
       if (settings.summary && summary && summary.text) {
         segments.push({ key: 'summary', text: '※ ' + summary.text, className: 'wdxt-summary' })
+      }
+      // 完成后没有摘要时，至少留一句「最后做了什么」，否则这一行只剩状态和耗时。
+      if (!view.running && progress && !activityShown && !(settings.summary && summary && summary.text)) {
+        var lastActivity = activityText(view, t)
+        if (lastActivity !== '') segments.push({ key: 'activity', text: lastActivity, className: 'wdxt-activity' })
       }
       return segments
     }
 
     function lineSettings(settings) {
-      var value = (settings && settings.value) || {}
+      var value = (settings && settings.value) || settings || {}
+      var stall = value.recapStallSeconds
+      var stallSeconds = typeof stall === 'number' ? stall : Number(stall)
+      if (!isFinite(stallSeconds) || stallSeconds < 60) stallSeconds = 600
+      if (stallSeconds > 3600) stallSeconds = 3600
       return {
         activity: value.recapActivity === true,
         summary: value.recap !== false,
+        progress: value.recapProgress !== false,
+        stallMs: stallSeconds * 1000,
+      }
+    }
+
+    /**
+     * 运行中的进度快照：每 `stallMs` 无新输出记一条，摘要和内容都保持短。
+     * 纯函数，方便测试；写历史由调用方发一次 RPC。
+     */
+    function progressEntryOf(view, settings, t) {
+      var bucket = Math.max(1, Math.floor(view.silenceMs / settings.stallMs))
+      var waiting = formatDuration(bucket * settings.stallMs, t)
+      var activity = activityText(view, t)
+      var subject = activity !== '' ? activity : tr(t, 'turn.thinking', '思考中…')
+      return {
+        turn: view.turn,
+        bucket: bucket,
+        anchor: typeof view.lastEventAt === 'number' ? view.lastEventAt : 0,
+        status: 'stalled',
+        summary: trf(t, 'progress.entry', { turn: view.turn, activity: subject, duration: waiting }, '第 ' + view.turn + ' 轮 · ' + subject + ' · 等待 ' + waiting),
+        activity: activity,
+        elapsedMs: view.elapsedMs,
+        silenceMs: bucket * settings.stallMs,
+        steps: view.steps,
+        at: Date.now(),
       }
     }
 
@@ -1252,6 +1442,7 @@ window.__ModuleLoader__.load({
       var useInput = props.useInput
       var useSettings = props.useSettings
       var readFeed = props.readFeed
+      var openProgress = props.openProgress
       var t = props.t
 
       var running = (useSession ? useSession(function (s) { return s && s.running }) : false) || false
@@ -1265,16 +1456,20 @@ window.__ModuleLoader__.load({
       var [tick, setTick] = useState(0)
       var [summary, setSummary] = useState(null)
       var [dismissedTurn, setDismissedTurn] = useState(0)
+      var [stalledTurn, setStalledTurn] = useState(0)
       var requested = useRef('')
       var activeSession = useRef('')
+      var reportedBuckets = useRef({})
 
-      // 切换会话时清掉上一会话的摘要和请求去重键。
+      // 切换会话时清掉上一会话的摘要、静默标记和请求去重键。
       useEffect(function () {
         setEntries([])
         setSummary(null)
         setDismissedTurn(0)
+        setStalledTurn(0)
         requested.current = ''
         activeSession.current = ''
+        reportedBuckets.current = {}
       }, [sessionId])
 
       // 只订阅事件窗口，不写会话。窗口由 Session Controller 维护。
@@ -1320,6 +1515,26 @@ window.__ModuleLoader__.load({
         return function () { clearInterval(timer) }
       }, [view.running, view.turn])
 
+      // 静默超过阈值后把这一行「钉住」：新事件恢复也不闪走，直到本轮结束。
+      var stalled = Boolean(view.running && cfg.progress && view.silenceMs >= cfg.stallMs)
+      useEffect(function () {
+        if (!stalled) return
+        setStalledTurn(function (current) { return current === view.turn ? current : view.turn })
+      }, [stalled, view.turn])
+      var stickyStall = stalled || (view.running && stalledTurn === view.turn)
+
+      // 长时间没有新输出时，每 10 分钟往「会话回顾」记一条进度；同一轮同一档只发一次。
+      var progressBucket = view.running && cfg.progress ? Math.floor(view.silenceMs / cfg.stallMs) : 0
+      useEffect(function () {
+        if (progressBucket < 1 || !sessionId || view.turn === 0) return
+        var key = view.turn + ':' + view.lastEventAt + ':' + progressBucket
+        if (reportedBuckets.current[key] === true) return
+        reportedBuckets.current[key] = true
+        requestProgress(sessionId, progressEntryOf(view, cfg, t)).catch(function () {
+          // 失败不重试；下一条（下一个 10 分钟）继续。
+        })
+      }, [progressBucket, sessionId, view.turn])
+
       // 轮次结束后去 Host 要一次语义摘要。Host 侧按 minTurns / cooldown /
       // similarity 决定是否真的调用模型；这里只按轮次去重。
       useEffect(function () {
@@ -1348,29 +1563,52 @@ window.__ModuleLoader__.load({
 
       // 运行中先展示本地活动；语义摘要只在上一条轮次结束后出现，避免把旧摘要说成这一轮。
       var visibleSummary = summary !== null && summary.turn === view.turn && !running ? summary : null
-      var segments = buildTurnSegments(view, cfg, t, visibleSummary)
-      if (segments.length === 0 || dismissedTurn === view.turn) return null
+      var segments = buildTurnSegments(view, cfg, t, visibleSummary, stickyStall)
+      // 可见性可以「钉住」，状态永远用实时静默判断，避免恢复输出后还显示无新输出。
+      var status = cfg.progress ? turnStatusInfo(view, t, stalled) : null
+      var showRunning = view.running && (cfg.activity || (cfg.progress && stickyStall))
+      // 完成态只在三种情况下出现：有摘要、用户开了活动流水、或这一轮曾经无新输出。
+      // 普通轮次结束后不常驻一条「已完成」，否则又变回噪音。
+      var showCompleted = !view.running && ((cfg.summary && visibleSummary !== null) || cfg.activity || (cfg.progress && stalledTurn === view.turn))
+      if (view.turn === 0 || (!showRunning && !showCompleted)) return null
+      if ((segments.length === 0 && status === null) || dismissedTurn === view.turn) return null
 
-      var fullTitle = segments.map(function (segment) { return segment.text }).join(RECAP_SEP)
+      var fullTitle = (status === null ? [] : [status.label]).concat(segments.map(function (segment) { return segment.text })).join(RECAP_SEP)
       var children = [h(PluginStyles, { key: 'style', scope: 'turn-line' })]
+      if (status !== null) children.push(h(StatusChip, { key: 'status', kind: status.kind, label: status.label, live: true, t: t }))
       for (var index = 0; index < segments.length; index += 1) {
         if (index > 0) children.push(h('span', { key: 'sep' + index, className: 'wdxt-sep' }, '·'))
         children.push(h('span', {
           key: segments[index].key,
           className: 'wdxt-seg ' + segments[index].className,
+          title: segments[index].key === 'progress' ? tr(t, 'turn.progressHint', '每 10 分钟在「会话回顾」记一条进度') : undefined,
         }, segments[index].text))
+      }
+      if (typeof openProgress === 'function') {
+        children.push(h('button', {
+          key: 'open',
+          type: 'button',
+          className: 'wdxt-open',
+          title: tr(t, 'progress.open', '查看进度'),
+          'aria-label': tr(t, 'progress.open', '查看进度'),
+          onClick: openProgress,
+        }, '›'))
       }
       children.push(h('button', {
         key: 'close',
         type: 'button',
         className: 'wdxt-close',
-        title: tr(t, 'turn.dismiss', '收起这一行'),
-        'aria-label': tr(t, 'turn.dismiss', '收起这一行'),
+        title: tr(t, 'turn.dismiss', '本轮不再显示这一行'),
+        'aria-label': tr(t, 'turn.dismiss', '本轮不再显示这一行'),
         onClick: function () { setDismissedTurn(view.turn) },
       }, '×'))
 
       return h('div', { className: 'wdxt-root', 'data-wdx-turn-line': true, 'data-placement': 'above' }, [
-        h('div', { className: 'wdxt-row', title: fullTitle }, children),
+        h('div', {
+          className: 'wdxt-row',
+          title: fullTitle,
+          'data-state': view.running ? (stalled ? 'stalled' : 'running') : view.status,
+        }, children),
       ])
     }
 
@@ -1379,9 +1617,8 @@ window.__ModuleLoader__.load({
     /**
      * WDX Relief 的右侧栏页面。
      *
-     * 页面是插件所有小功能的容器：每个功能一个 section，目前只有「待跟进的事」。
-     * 数据由 Host 侧 `/api/wdx-relief/today` 产生：只读会话尾部，一次模型调用做归并判断；
-     * 模型失败时 Host 会退回关键词清单，并在响应里带 `degraded`，这里如实标注。
+     * 两个 Tab：会话回顾（摘要 + 进度 + 待跟进）和旁问；
+     * 待跟进不再跨会话，而是落在当前会话最新一轮的「待跟进」标记上。
      */
 
     var RELIEF_TAB = 'wdx-relief'
@@ -1398,45 +1635,6 @@ window.__ModuleLoader__.load({
       }, [
         h('rect', { key: 'frame', x: 2.5, y: 2.5, width: 11, height: 11, rx: 2.5, stroke: 'currentColor', strokeWidth: 1.2 }),
         h('path', { key: 'lines', d: 'M5.2 6.1h5.6M5.2 8.3h5.6M5.2 10.5h3.4', stroke: 'currentColor', strokeWidth: 1.2, strokeLinecap: 'round' }),
-      ])
-    }
-
-    function ClearIcon() {
-      return h('svg', {
-        width: 12,
-        height: 12,
-        viewBox: '0 0 16 16',
-        fill: 'none',
-        'aria-hidden': 'true',
-        focusable: 'false',
-      }, [
-        h('path', {
-          key: 'cross',
-          d: 'M4 4l8 8M12 4l-8 8',
-          stroke: 'currentColor',
-          'stroke-width': 1.5,
-          'stroke-linecap': 'round',
-        }),
-      ])
-    }
-
-    function ReloadIcon() {
-      return h('svg', {
-        width: 14,
-        height: 14,
-        viewBox: '0 0 16 16',
-        fill: 'none',
-        'aria-hidden': 'true',
-        focusable: 'false',
-      }, [
-        h('path', {
-          key: 'arrow',
-          d: 'M12.8 6.4A5 5 0 1 0 13 9.4M12.8 2.6v3.8H9',
-          stroke: 'currentColor',
-          strokeWidth: 1.2,
-          strokeLinecap: 'round',
-          strokeLinejoin: 'round',
-        }),
       ])
     }
 
@@ -1519,32 +1717,162 @@ window.__ModuleLoader__.load({
      * 会话回顾历史：每次真正生成过一条 recap 就留一条，关掉 composer 上那行之后
      * 仍然可以在这里回看。只读本地记录，不重新生成。
      */
+    /** 摘要/回复里以「下一步 / 需要你 / 等你」开头时，视为这一轮留给用户的待跟进。 */
+    var RECAP_NEXT_STEP_RE = /^(下一步|接下来|还需要|需要你|需要您|等你|请你|请您|next step|you need|please|waiting for)/iu
+
+    function recapEntryTime(item) {
+      return typeof item.at === 'number' ? item.at : 0
+    }
+
+    /** 进度记录带 elapsedMs，可以反推出这一轮的开始时间；摘要只能取记录时间。 */
+    function recapEntryStart(item) {
+      var at = recapEntryTime(item)
+      if (item.kind === 'progress' && typeof item.elapsedMs === 'number' && item.elapsedMs > 0) {
+        return Math.max(0, at - item.elapsedMs)
+      }
+      return at
+    }
+
+    /**
+     * 按轮次分组：同一轮的进度快照和摘要放在一起。
+     * 组按最后一条记录的时间排序，order 为 desc 时反转；组内也按同样方向排序。
+     * 旧记录没有 turn 时归到「更早的记录」。
+     */
+    function groupRecapEntries(items, order) {
+      var groups = []
+      var byKey = new Map()
+      for (var index = 0; index < items.length; index += 1) {
+        var item = items[index]
+        var hasTurn = typeof item.turn === 'number'
+        var key = hasTurn ? 't:' + item.turn : 'u'
+        var group = byKey.get(key)
+        if (group === undefined) {
+          group = { key: key, turn: hasTurn ? item.turn : null, entries: [], firstAt: 0, lastAt: 0 }
+          byKey.set(key, group)
+          groups.push(group)
+        }
+        group.entries.push(item)
+        var at = recapEntryTime(item)
+        var start = recapEntryStart(item)
+        if (group.firstAt === 0 || start < group.firstAt) group.firstAt = start
+        if (at > group.lastAt) group.lastAt = at
+      }
+      groups.sort(function (left, right) { return (left.lastAt || 0) - (right.lastAt || 0) })
+      if (order === 'desc') groups.reverse()
+      for (var cursor = 0; cursor < groups.length; cursor += 1) {
+        groups[cursor].entries.sort(function (left, right) { return recapEntryTime(left) - recapEntryTime(right) })
+        if (order === 'desc') groups[cursor].entries.reverse()
+      }
+      // 「更早的记录」没有轮次信息，固定放到列表末尾，不夹在轮次中间。
+      var unknown = groups.filter(function (group) { return group.key === 'u' })
+      if (unknown.length > 0) groups = groups.filter(function (group) { return group.key !== 'u' }).concat(unknown)
+      return groups
+    }
+
+    function recapItemKey(item) {
+      if (item.kind === 'progress') return 'p:' + item.seq + ':' + item.turn + ':' + (item.anchor || 0) + ':' + item.bucket
+      return 's:' + item.seq
+    }
+
+    function recapGroupTime(group, t) {
+      var last = formatRecapTime(group.lastAt)
+      if (last === '') return ''
+      var span = group.lastAt - group.firstAt
+      if (!(span > 0)) return last
+      return last + ' · ' + formatDuration(span, t)
+    }
+
+    function latestRecordedTurn(entries) {
+      var list = Array.isArray(entries) ? entries : []
+      for (var index = list.length - 1; index >= 0; index -= 1) {
+        var event = eventOf(list[index])
+        if (event && event.type === 'turn/start') return eventTurn(event)
+      }
+      return 0
+    }
+
+    /**
+     * 当前会话的最新轮次，用来判断「待跟进」是否真的属于最后这一轮。
+     * 历史里最大的 turn 可能落后于刚结束、但摘要没写进历史的一轮，不能只看历史。
+     */
+    function useCurrentTurn(readFeed, sessionId) {
+      var [turn, setTurn] = useState(0)
+      useEffect(function () {
+        if (!sessionId || typeof readFeed !== 'function') {
+          setTurn(0)
+          return undefined
+        }
+        var feed = null
+        try {
+          feed = readFeed(sessionId)
+        } catch (error) {
+          feed = null
+        }
+        if (!feed) {
+          setTurn(0)
+          return undefined
+        }
+        function update() {
+          try {
+            var snapshot = feed.getSnapshot()
+            setTurn(latestRecordedTurn(snapshot && Array.isArray(snapshot.entries) ? snapshot.entries : []))
+          } catch (error) {
+            // 会话关闭时静默。
+          }
+        }
+        update()
+        return feed.subscribe(update)
+      }, [sessionId, readFeed])
+      return turn
+    }
+
+    /**
+     * 会话回顾：摘要和进度快照按轮次分组，组可折叠；支持最新在前 / 最早在前。
+     * 只读本地记录，不重新生成；打开期间每 30 秒静默刷新一次。
+     */
     function RecapHistorySection(props) {
       var sessionId = props.sessionId
       var t = props.t
+      var initialFilter = props.initialFilter
+      var initialFilterRevision = props.initialFilterRevision
+      var initialOrder = props.initialOrder
+      var running = props.running === true
+      var currentTurn = typeof props.currentTurn === 'number' ? props.currentTurn : 0
+      var configuredPendingTurns = Number(props.pendingTurns)
+      var pendingTurns = Number.isFinite(configuredPendingTurns) ? Math.max(1, Math.min(20, Math.round(configuredPendingTurns))) : 3
       var [state, setState] = useState({ status: 'loading', items: [] })
-      var [openSeq, setOpenSeq] = useState(null)
+      var [filter, setFilter] = useState(initialFilter === 'progress' || initialFilter === 'summary' || initialFilter === 'pending' ? initialFilter : 'all')
+      var [order, setOrder] = useState(initialOrder === 'asc' ? 'asc' : 'desc')
+      var [openKey, setOpenKey] = useState(null)
+      var [confirmClear, setConfirmClear] = useState(false)
+      var [openTurn, setOpenTurn] = useState(undefined)
       var controllerRef = useRef(null)
+      var pendingRef = useRef(false)
 
-      function load() {
+      function load(silent) {
         if (!sessionId) {
-          setState({ status: 'empty', items: [] })
+          if (!silent) setState({ status: 'empty', items: [] })
           return
         }
+        // 自动轮询不打断正在进行的手动加载，避免把 loading 状态卡住。
+        if (silent && pendingRef.current) return
         if (controllerRef.current) controllerRef.current.abort()
         var controller = new AbortController()
         controllerRef.current = controller
-        setState({ status: 'loading', items: [] })
+        pendingRef.current = true
+        if (!silent) setState({ status: 'loading', items: [] })
         requestRecapHistory(sessionId, controller.signal).then(function (result) {
+          pendingRef.current = false
           if (controller.signal.aborted) return
           if (result.error) {
-            setState({ status: 'error', items: [], code: result.code || '' })
+            if (!silent) setState({ status: 'error', items: [], code: result.code || '' })
             return
           }
           var items = result.items || []
           setState({ status: items.length === 0 ? 'empty' : 'ready', items: items })
         }).catch(function () {
-          if (!controller.signal.aborted) setState({ status: 'error', items: [] })
+          pendingRef.current = false
+          if (!controller.signal.aborted && !silent) setState({ status: 'error', items: [] })
         })
       }
 
@@ -1555,7 +1883,8 @@ window.__ModuleLoader__.load({
         controllerRef.current = controller
         requestRecapHistory(sessionId, controller.signal, true).then(function (result) {
           if (controller.signal.aborted || result.error) return
-          setOpenSeq(null)
+          setOpenKey(null)
+          setConfirmClear(false)
           setState({ status: 'empty', items: [] })
         }).catch(function () {
           // 清空失败保持原列表。
@@ -1563,11 +1892,248 @@ window.__ModuleLoader__.load({
       }
 
       useEffect(function () {
-        load()
+        load(false)
+        var timer = setInterval(function () { load(true) }, 30000)
         return function () {
+          clearInterval(timer)
           if (controllerRef.current) controllerRef.current.abort()
         }
       }, [sessionId])
+
+      useEffect(function () {
+        if (initialFilter === 'all' || initialFilter === 'summary' || initialFilter === 'progress' || initialFilter === 'pending') {
+          setFilter(initialFilter)
+          setOpenKey(null)
+        }
+      }, [initialFilter, initialFilterRevision])
+
+      useEffect(function () {
+        setOpenTurn(undefined)
+        setOpenKey(null)
+        setConfirmClear(false)
+      }, [sessionId])
+
+      var items = state.items
+      var groups = groupRecapEntries(items, order)
+      var summaryCount = 0
+      var progressCount = 0
+      for (var index = 0; index < items.length; index += 1) {
+        if (items[index].kind === 'progress') progressCount += 1
+        else summaryCount += 1
+      }
+
+      function groupPending(group) {
+        if (running) return false
+        if (currentTurn === 0 || typeof group.turn !== 'number') return false
+        if (group.turn < currentTurn - pendingTurns + 1 || group.turn > currentTurn) return false
+        for (var pendingIndex = 0; pendingIndex < group.entries.length; pendingIndex += 1) {
+          var entry = group.entries[pendingIndex]
+          if (entry.kind === 'progress') continue
+          if (entry.kind === 'question') return true
+          if (typeof entry.question === 'string' && entry.question !== '') return true
+          if (typeof entry.assistant === 'string' && RECAP_NEXT_STEP_RE.test(entry.assistant.trim())) return true
+          if (typeof entry.summary === 'string' && RECAP_NEXT_STEP_RE.test(entry.summary.trim())) return true
+        }
+        return false
+      }
+
+      var pendingCount = 0
+      for (var pendingIndex = 0; pendingIndex < groups.length; pendingIndex += 1) {
+        if (groupPending(groups[pendingIndex])) pendingCount += 1
+      }
+
+      var visibleGroups = []
+      var visibleCount = 0
+      for (var groupIndex = 0; groupIndex < groups.length; groupIndex += 1) {
+        var group = groups[groupIndex]
+        var pending = groupPending(group)
+        var entries
+        if (filter === 'pending') {
+          if (!pending) continue
+          entries = group.entries
+        } else {
+          entries = group.entries.filter(function (item) {
+            if (filter === 'progress') return item.kind === 'progress'
+            if (filter === 'summary') return item.kind !== 'progress'
+            return true
+          })
+        }
+        if (entries.length === 0) continue
+        var shownProgress = 0
+        var shownSummary = 0
+        for (var entryIndex = 0; entryIndex < entries.length; entryIndex += 1) {
+          if (entries[entryIndex].kind === 'progress') shownProgress += 1
+          else shownSummary += 1
+        }
+        visibleGroups.push({
+          key: group.key,
+          turn: group.turn,
+          firstAt: group.firstAt,
+          lastAt: group.lastAt,
+          entries: entries,
+          shownProgress: shownProgress,
+          shownSummary: shownSummary,
+          pending: pending,
+        })
+        visibleCount += entries.length
+      }
+
+      var newestKey = ''
+      var newestAt = -1
+      for (var newestIndex = 0; newestIndex < visibleGroups.length; newestIndex += 1) {
+        // 「更早的记录」不参与默认展开，优先展开最新的真实轮次。
+        if (visibleGroups[newestIndex].turn === null) continue
+        if ((visibleGroups[newestIndex].lastAt || 0) >= newestAt) {
+          newestAt = visibleGroups[newestIndex].lastAt || 0
+          newestKey = visibleGroups[newestIndex].key
+        }
+      }
+      if (newestKey === '') {
+        for (var fallbackIndex = 0; fallbackIndex < visibleGroups.length; fallbackIndex += 1) {
+          if ((visibleGroups[fallbackIndex].lastAt || 0) >= newestAt) {
+            newestAt = visibleGroups[fallbackIndex].lastAt || 0
+            newestKey = visibleGroups[fallbackIndex].key
+          }
+        }
+      }
+      var expandedKey = openTurn === undefined ? newestKey : openTurn
+
+      function chooseFilter(id) {
+        setFilter(id)
+        setOpenKey(null)
+        setConfirmClear(false)
+        setOpenTurn(undefined)
+        if (typeof props.onFilterChange === 'function') props.onFilterChange(id)
+      }
+
+      function chooseOrder(id) {
+        setOrder(id)
+        if (typeof props.onOrderChange === 'function') props.onOrderChange(id)
+      }
+
+      function pill(id, label, active, onClick, countValue) {
+        return h('button', {
+          key: id,
+          type: 'button',
+          className: 'wdxp-filter' + (active ? ' wdxp-filterActive' : ''),
+          'aria-pressed': active,
+          onClick: onClick,
+        }, [
+          h('span', { key: 'label' }, label),
+          typeof countValue === 'number' && countValue > 0
+            ? h('span', { key: 'count', className: 'wdxp-filterCount' }, String(countValue))
+            : null,
+        ])
+      }
+
+      function toggleGroup(key) {
+        setOpenTurn(expandedKey === key ? null : key)
+      }
+
+      function progressDetail(item) {
+        var elapsed = formatDuration(item.elapsedMs, t)
+        var silence = formatDuration(item.silenceMs, t)
+        return h('div', { key: 'detail', className: 'wdxh-detail' }, [
+          typeof item.turn === 'number' ? h('p', { key: 'turn', className: 'wdxh-line' }, [
+            h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'progress.turnLabel', '轮次')),
+            trf(t, 'progress.turn', { turn: item.turn }, '第 ' + item.turn + ' 轮'),
+          ]) : null,
+          h('p', { key: 'elapsed', className: 'wdxh-line' }, [
+            h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'progress.elapsedLabel', '总耗时')),
+            elapsed,
+          ]),
+          h('p', { key: 'silence', className: 'wdxh-line' }, [
+            h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'turn.status.stalled', '无新输出')),
+            silence,
+          ]),
+          typeof item.steps === 'number' && item.steps > 0 ? h('p', { key: 'steps', className: 'wdxh-line' }, [
+            h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'progress.stepsLabel', '步数')),
+            String(item.steps),
+          ]) : null,
+          item.activity ? h('p', { key: 'activity', className: 'wdxh-line' }, [
+            h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'progress.current', '现在')),
+            item.activity,
+          ]) : null,
+        ])
+      }
+
+      function recapDetail(item) {
+        return h('div', { key: 'detail', className: 'wdxh-detail' }, [
+          item.user !== '' ? h('p', { key: 'q', className: 'wdxh-line' }, [
+            h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'panel.recapRequest', '要求')),
+            item.user,
+          ]) : null,
+          item.assistant !== '' ? h('p', { key: 'a', className: 'wdxh-line' }, [
+            h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'panel.recapReply', '回复')),
+            item.assistant,
+          ]) : null,
+          item.question !== '' ? h('p', { key: 'ask', className: 'wdxh-line' }, [
+            h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'panel.recapQuestion', '待回答')),
+            item.question,
+          ]) : null,
+        ])
+      }
+
+      function entryRow(item) {
+        var key = recapItemKey(item)
+        var open = openKey === key
+        var isProgress = item.kind === 'progress'
+        return h('li', { key: key, className: 'wdxp-item' }, [
+          h('button', {
+            key: 'row',
+            type: 'button',
+            className: 'wdxp-row wdxh-row',
+            title: item.summary,
+            'aria-expanded': open,
+            onClick: function () { setOpenKey(open ? null : key) },
+          }, [
+            h('span', { key: 'kind', className: 'wdxh-kind' }, isProgress
+              ? tr(t, 'panel.recapTagProgress', '进度')
+              : tr(t, 'panel.recapTagSummary', '摘要')),
+            h('span', { key: 'text', className: 'wdxp-rowText' }, item.summary),
+            h('span', { key: 'time', className: 'wdxp-rowMeta' }, formatRecapTime(item.at)),
+          ]),
+          open ? (isProgress ? progressDetail(item) : recapDetail(item)) : null,
+        ])
+      }
+
+      function groupBlock(group) {
+        var expanded = expandedKey === group.key
+        var title = group.turn === null
+          ? tr(t, 'panel.recapUnknownTurn', '更早的记录')
+          : trf(t, 'progress.turn', { turn: group.turn }, '第 ' + group.turn + ' 轮')
+        var time = recapGroupTime(group, t)
+        return h('li', { key: group.key, className: 'wdxp-group' }, [
+          h('button', {
+            key: 'head',
+            type: 'button',
+            className: 'wdxp-groupHead',
+            'aria-expanded': expanded,
+            onClick: function () { toggleGroup(group.key) },
+          }, [
+            h('span', { key: 'title', className: 'wdxp-groupTitle' }, title),
+            group.shownProgress > 0
+              ? h('span', { key: 'progress', className: 'wdxp-groupCount' }, trf(t, 'panel.recapGroupProgress', { count: group.shownProgress }, '进度 ' + group.shownProgress))
+              : null,
+            group.shownSummary > 0
+              ? h('span', { key: 'summary', className: 'wdxp-groupCount' }, trf(t, 'panel.recapGroupSummary', { count: group.shownSummary }, '摘要 ' + group.shownSummary))
+              : null,
+            group.pending
+              ? h('span', {
+                  key: 'pending',
+                  className: 'wdxp-groupPending',
+                  title: tr(t, 'panel.recapPendingHint', '这一轮结束时留下了问题或下一步'),
+                }, tr(t, 'panel.recapPending', '待跟进'))
+              : null,
+            time !== '' ? h('span', { key: 'time', className: 'wdxp-groupTime' }, time) : null,
+            h('span', { key: 'caret', className: 'wdxp-groupCaret', 'aria-hidden': 'true' }, expanded ? '▾' : '▸'),
+          ]),
+          expanded
+            ? h('div', { key: 'body', className: 'wdxp-groupBody' },
+                h('ul', { className: 'wdxp-list wdxp-groupList' }, group.entries.map(entryRow)))
+            : null,
+        ])
+      }
 
       var body
       if (state.status === 'loading') {
@@ -1581,51 +2147,50 @@ window.__ModuleLoader__.load({
             ? tr(t, 'panel.recapRouteMissing', '回顾历史路由没加载；重启 DSH 后再试')
             : tr(t, 'panel.recapError', '回顾历史读取失败'))
       } else if (state.status === 'empty') {
-        body = h('p', { key: 'empty', className: 'wdxp-note' }, tr(t, 'panel.recapEmpty', '还没有生成过摘要；聊到第三轮就会出现第一条'))
+        body = h('p', { key: 'empty', className: 'wdxp-note' }, sessionId
+          ? tr(t, 'panel.recapEmpty', '还没有生成过摘要或进度记录；聊过一轮，或运行中长时间没有新输出时就会出现')
+          : tr(t, 'panel.recapNoSession', '先打开一个会话'))
       } else {
+        var list = visibleGroups.length === 0
+          ? h('p', { key: 'filterEmpty', className: 'wdxp-note' }, filter === 'pending'
+              ? tr(t, 'panel.recapPendingEmpty', '目前没有待跟进的轮次')
+              : tr(t, 'panel.recapFilterEmpty', '这个筛选下还没有记录'))
+          : h('ul', { key: 'groups', className: 'wdxp-groups' }, visibleGroups.map(groupBlock))
         body = h('div', { key: 'rows', className: 'wdxp-rows' }, [
           h('div', { key: 'toolbar', className: 'wdxh-toolbar' }, [
             h('span', { key: 'count', className: 'wdxh-count' },
-              trf(t, 'panel.recapCount', { count: state.items.length }, '共 ' + state.items.length + ' 条')),
+              trf(t, 'panel.recapCount', { count: visibleCount }, '共 ' + visibleCount + ' 条')),
+            h('div', { key: 'filters', className: 'wdxp-filters' }, [
+              pill('all', tr(t, 'panel.recapFilterAll', '全部'), filter === 'all', function () { chooseFilter('all') }, items.length),
+              pill('summary', tr(t, 'panel.recapFilterSummary', '摘要'), filter === 'summary', function () { chooseFilter('summary') }, summaryCount),
+              pill('progress', tr(t, 'panel.recapFilterProgress', '进度'), filter === 'progress', function () { chooseFilter('progress') }, progressCount),
+              pill('pending', tr(t, 'panel.recapFilterPending', '待跟进'), filter === 'pending', function () { chooseFilter('pending') }, pendingCount),
+            ]),
+            h('div', { key: 'order', className: 'wdxp-filters' }, [
+              pill('desc', tr(t, 'panel.recapOrderDesc', '最新在前'), order === 'desc', function () { chooseOrder('desc') }),
+              pill('asc', tr(t, 'panel.recapOrderAsc', '最早在前'), order === 'asc', function () { chooseOrder('asc') }),
+            ]),
+            h('button', {
+              key: 'refresh',
+              type: 'button',
+              className: 'wdxp-link',
+              onClick: function () { load(false) },
+            }, tr(t, 'panel.refresh', '刷新')),
             h('button', {
               key: 'clear',
               type: 'button',
               className: 'wdxp-link',
-              onClick: clearAll,
+              onClick: function () { setConfirmClear(true) },
             }, tr(t, 'panel.recapClear', '清空')),
           ]),
-          h('ul', { key: 'list', className: 'wdxp-list' }, state.items.map(function (item) {
-          var open = openSeq === item.seq
-          return h('li', { key: String(item.seq), className: 'wdxp-item' }, [
-            h('button', {
-              key: 'row',
-              type: 'button',
-              className: 'wdxp-row wdxh-row',
-              title: item.summary,
-              'aria-expanded': open,
-              onClick: function () { setOpenSeq(open ? null : item.seq) },
-            }, [
-              h('span', { key: 'text', className: 'wdxp-rowText' }, item.summary),
-              h('span', { key: 'time', className: 'wdxp-rowMeta' }, formatRecapTime(item.at)),
-            ]),
-            open
-              ? h('div', { key: 'detail', className: 'wdxh-detail' }, [
-                  item.user !== '' ? h('p', { key: 'q', className: 'wdxh-line' }, [
-                    h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'panel.recapRequest', '要求')),
-                    item.user,
-                  ]) : null,
-                  item.assistant !== '' ? h('p', { key: 'a', className: 'wdxh-line' }, [
-                    h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'panel.recapReply', '回复')),
-                    item.assistant,
-                  ]) : null,
-                  item.question !== '' ? h('p', { key: 'ask', className: 'wdxh-line' }, [
-                    h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'panel.recapQuestion', '待回答')),
-                    item.question,
-                  ]) : null,
-                ])
-              : null,
-          ])
-          })),
+          confirmClear
+            ? h('div', { key: 'confirm', className: 'wdxp-confirm' }, [
+                h('span', { key: 'text', className: 'wdxp-confirmText' }, tr(t, 'panel.recapClearConfirm', '删除当前会话的全部摘要和进度记录？')),
+                h('button', { key: 'yes', type: 'button', className: 'wdxp-link wdxp-danger', onClick: clearAll }, tr(t, 'panel.recapClearYes', '确认清空')),
+                h('button', { key: 'no', type: 'button', className: 'wdxp-link', onClick: function () { setConfirmClear(false) } }, tr(t, 'panel.recapClearNo', '取消')),
+              ])
+            : null,
+          list,
         ])
       }
 
@@ -1885,187 +2450,35 @@ window.__ModuleLoader__.load({
 
     function ReliefPanel(props) {
       var sessionId = props.sessionId
-      var openSession = props.openSession
       var modelDirectories = props.modelDirectories
+      var readFeed = props.readFeed
+      var currentTurn = useCurrentTurn(readFeed, sessionId)
       var t = props.t
-      var [tab, setTab] = useState('untouched')
+      var requestedTab = props.requestedTab
+      var requestedRevision = props.requestedRevision
+      var requestedFilter = props.requestedFilter
+      var configuredTab = props.defaultTab
+      var sessionRunning = props.running === true
+      var configuredPendingTurns = Number(props.pendingTurns)
+      var pendingTurns = Number.isFinite(configuredPendingTurns) ? Math.max(1, Math.min(20, Math.round(configuredPendingTurns))) : 3
+      var initialTab = configuredTab === 'btw' ? 'btw' : 'recaps'
+      var [tab, setTab] = useState(initialTab)
+      var [recapFilter, setRecapFilter] = useState('all')
+      var [recapFilterRevision, setRecapFilterRevision] = useState(0)
+      var [recapOrder, setRecapOrder] = useState('desc')
 
-      var [state, setState] = useState({ status: 'loading', items: [], degraded: false, detail: '', lastCleared: null, clearError: '' })
-      var controllerRef = useRef(null)
-
-      function load(force) {
-        if (!sessionId) {
-          setState({ status: 'empty', items: [], degraded: false, detail: '', lastCleared: null, clearError: '' })
-          return
-        }
-        if (controllerRef.current) controllerRef.current.abort()
-        var controller = new AbortController()
-        controllerRef.current = controller
-        setState({ status: 'loading', items: [], degraded: false, detail: '', lastCleared: null, clearError: '' })
-        requestToday(sessionId, controller.signal, force === true).then(function (result) {
-          if (controller.signal.aborted) return
-          if (result.error) {
-            setState({ status: 'error', items: [], degraded: false, detail: result.message || '', lastCleared: null, clearError: '' })
-            return
-          }
-          if (result.unavailable || result.disabled) {
-            setState({ status: 'unavailable', items: [], degraded: false, detail: '', lastCleared: null, clearError: '' })
-            return
-          }
-          var items = result.items || []
-          setState({
-            status: items.length === 0 ? 'empty' : 'ready',
-            items: items,
-            degraded: result.degraded === true,
-            detail: result.detail || '',
-            hidden: result.hidden || 0,
-            lastCleared: null,
-            clearError: '',
-          })
-        }).catch(function () {
-          if (!controller.signal.aborted) setState({ status: 'error', items: [], degraded: false, detail: '' })
-        })
-      }
-
-      /** 清掉一条：先从本地列表移除，服务端失败时放回来。 */
-      function dismiss(item) {
-        if (!sessionId || !item || typeof item.text !== 'string' || item.text === '') return
-        var remaining = state.items.filter(function (other) {
-          return !(other.sessionId === item.sessionId && other.text === item.text)
-        })
-        var keep = { degraded: state.degraded, detail: state.detail }
-        setState({
-          status: remaining.length === 0 ? 'empty' : 'ready',
-          items: remaining,
-          degraded: keep.degraded,
-          detail: keep.detail,
-          lastCleared: item,
-          clearError: '',
-        })
-        requestFollowup(DISMISS_PATH, sessionId, item.text).then(function (result) {
-          if (!result.error) return
-          setState({
-            status: state.items.length === 0 ? 'empty' : 'ready',
-            items: state.items,
-            degraded: keep.degraded,
-            detail: keep.detail,
-            lastCleared: null,
-            clearError: result.message || '',
-          })
-        })
-      }
-
-      /** 撤销上一次清掉，然后按服务端结果重新取一次（缓存命中，不会重跑模型）。 */
-      function undo() {
-        var item = state.lastCleared
-        if (!sessionId || !item) return
-        setState({
-          status: state.status,
-          items: state.items,
-          degraded: state.degraded,
-          detail: state.detail,
-          lastCleared: null,
-          clearError: '',
-        })
-        requestFollowup(RESTORE_PATH, sessionId, item.text).then(function (result) {
-          if (result.error) {
-            setState({
-              status: state.status,
-              items: state.items,
-              degraded: state.degraded,
-              detail: state.detail,
-              lastCleared: item,
-              clearError: result.message || '',
-            })
-            return
-          }
-          load(false)
-        })
-      }
+      // 从输入框上方那一行跳进来时，直接落到「会话回顾」并按「进度」筛选；
+      // 重复点击靠 revision 再触发一次。
+      useEffect(function () {
+        if (requestedTab === 'recaps' || requestedTab === 'btw') setTab(requestedTab)
+      }, [requestedTab, requestedRevision])
 
       useEffect(function () {
-        load(false)
-        return function () {
-          if (controllerRef.current) controllerRef.current.abort()
+        if (requestedFilter === 'all' || requestedFilter === 'summary' || requestedFilter === 'progress' || requestedFilter === 'pending') {
+          setRecapFilter(requestedFilter)
+          setRecapFilterRevision(function (value) { return value + 1 })
         }
-      }, [sessionId])
-
-      var count = state.items.length
-      var undoRow = state.lastCleared
-        ? h('div', { key: 'undo', className: 'wdxp-undo' }, [
-            h('span', { key: 'text' }, tr(t, 'panel.cleared', '已清掉这条')),
-            h('button', { key: 'undo', type: 'button', className: 'wdxp-link', onClick: undo }, tr(t, 'panel.undo', '撤销')),
-          ])
-        : null
-      var clearErrorRow = state.clearError
-        ? h('p', { key: 'clearError', className: 'wdxp-note', title: state.clearError },
-            tr(t, 'panel.clearFailed', '没清掉，再试一次'))
-        : null
-      var body
-      if (state.status === 'loading') {
-        body = h('div', { key: 'skeleton', className: 'wdxp-skeleton' }, [
-          h('div', { key: 'a', className: 'wdxp-skeletonRow' }),
-          h('div', { key: 'b', className: 'wdxp-skeletonRow' }),
-          h('div', { key: 'c', className: 'wdxp-skeletonRow' }),
-        ])
-      } else if (state.status === 'unavailable') {
-        body = h('p', { key: 'unavailable', className: 'wdxp-note' }, tr(t, 'panel.unavailable', '当前 profile 没有启用会话查询，无法整理'))
-      } else if (state.status === 'error') {
-        body = h('div', { key: 'error', className: 'wdxp-rows' }, [
-          h('p', { key: 'note', className: 'wdxp-note' }, [
-            h('span', { key: 'text' }, tr(t, 'panel.error', '整理失败，稍后再试。')),
-            h('button', {
-              key: 'retry',
-              type: 'button',
-              className: 'wdxp-link',
-              onClick: function () { load(true) },
-            }, tr(t, 'panel.retry', '重试')),
-          ]),
-          state.detail ? h('p', { key: 'detail', className: 'wdxp-degraded' }, state.detail) : null,
-        ])
-      } else if (state.status === 'empty') {
-        body = h('div', { key: 'empty', className: 'wdxp-rows' }, [
-          h('p', { key: 'note', className: 'wdxp-note' },
-            state.hidden > 0
-              ? tr(t, 'panel.emptyCleared', '最近的事都清掉了')
-              : tr(t, 'panel.empty', '最近两周没有待你决定的事')),
-          clearErrorRow,
-          undoRow,
-        ])
-      } else {
-        body = h('div', { key: 'rows', className: 'wdxp-rows' }, [
-          h('ul', { key: 'list', className: 'wdxp-list' }, state.items.map(function (item, index) {
-            return h('li', { key: String(index), className: 'wdxp-item wdxp-follow' }, [
-              h('button', {
-                key: 'open',
-                type: 'button',
-                className: 'wdxp-row',
-                title: item.text,
-                onClick: function () { if (typeof openSession === 'function') openSession(item.sessionId) },
-              }, [
-                h('span', { key: 'text', className: 'wdxp-rowText' }, item.text),
-                typeof item.idleHours === 'number'
-                  ? h('span', { key: 'meta', className: 'wdxp-rowMeta' }, trf(t, 'panel.ageShort', { hours: item.idleHours }, item.idleHours + ' 小时'))
-                  : null,
-              ]),
-              h('button', {
-                key: 'clear',
-                type: 'button',
-                className: 'wdxp-clear',
-                title: tr(t, 'panel.clearLabel', '清掉，不再出现在列表里'),
-                'aria-label': tr(t, 'panel.clearLabel', '清掉，不再出现在列表里'),
-                onClick: function () { dismiss(item) },
-              }, h(ClearIcon, { key: 'icon' })),
-            ])
-          })),
-          clearErrorRow,
-          undoRow,
-          state.degraded
-            ? h('p', { key: 'degraded', className: 'wdxp-degraded', title: state.detail },
-                tr(t, 'panel.degraded', '模型没整理成功，这份是按关键词挑的'))
-            : null,
-        ])
-      }
+      }, [requestedFilter, requestedRevision])
 
       function tabClass(id) {
         return 'wdxp-tab' + (tab === id ? ' wdxp-tabActive' : '')
@@ -2074,19 +2487,6 @@ window.__ModuleLoader__.load({
       return h('div', { className: 'wdxp-page' }, [
         h(PluginStyles, { key: 'style', scope: 'relief' }),
         h('div', { key: 'tabs', className: 'wdxp-tabs', role: 'tablist' }, [
-          h('button', {
-            key: 'untouched',
-            id: 'wdxp-tab-untouched',
-            type: 'button',
-            role: 'tab',
-            'aria-selected': tab === 'untouched',
-            'aria-controls': 'wdxp-pane-untouched',
-            className: tabClass('untouched'),
-            onClick: function () { setTab('untouched') },
-          }, [
-            h('span', { key: 'label' }, tr(t, 'section.untouched', '待跟进')),
-            count > 0 ? h('span', { key: 'count', className: 'wdxp-tabCount' }, String(count)) : null,
-          ]),
           h('button', {
             key: 'recaps',
             id: 'wdxp-tab-recaps',
@@ -2107,26 +2507,7 @@ window.__ModuleLoader__.load({
             className: tabClass('btw'),
             onClick: function () { setTab('btw') },
           }, tr(t, 'section.btw', '旁问')),
-          tab === 'untouched'
-            ? h('button', {
-                key: 'refresh',
-                type: 'button',
-                className: 'wdxp-iconBtn',
-                title: tr(t, 'panel.refresh', '刷新'),
-                'aria-label': tr(t, 'panel.refresh', '刷新'),
-                disabled: state.status === 'loading',
-                onClick: function () { load(true) },
-              }, h(ReloadIcon, { key: 'icon' }))
-            : null,
         ]),
-        h('div', {
-          key: 'untouched',
-          id: 'wdxp-pane-untouched',
-          role: 'tabpanel',
-          'aria-labelledby': 'wdxp-tab-untouched',
-          className: 'wdxp-pane',
-          hidden: tab !== 'untouched',
-        }, body),
         h('div', {
           key: 'recaps',
           id: 'wdxp-pane-recaps',
@@ -2134,7 +2515,19 @@ window.__ModuleLoader__.load({
           'aria-labelledby': 'wdxp-tab-recaps',
           className: 'wdxp-pane',
           hidden: tab !== 'recaps',
-        }, tab === 'recaps' ? h(RecapHistorySection, { key: 'recaps-body', sessionId: sessionId, t: t }) : null),
+        }, tab === 'recaps' ? h(RecapHistorySection, {
+          key: 'recaps-body',
+          sessionId: sessionId,
+          t: t,
+          initialFilter: recapFilter,
+          initialFilterRevision: recapFilterRevision,
+          initialOrder: recapOrder,
+          running: sessionRunning,
+          pendingTurns: pendingTurns,
+          currentTurn: currentTurn,
+          onFilterChange: setRecapFilter,
+          onOrderChange: setRecapOrder,
+        }) : null),
         h('div', {
           key: 'btw',
           id: 'wdxp-pane-btw',
@@ -2142,7 +2535,7 @@ window.__ModuleLoader__.load({
           'aria-labelledby': 'wdxp-tab-btw',
           className: 'wdxp-pane',
           hidden: tab !== 'btw',
-        }, h(BtwSection, { key: 'btw-body', sessionId: sessionId, t: t, modelDirectories: modelDirectories })),
+        }, tab === 'btw' ? h(BtwSection, { key: 'btw-body', sessionId: sessionId, t: t, modelDirectories: modelDirectories }) : null),
       ])
     }
 
@@ -2227,9 +2620,12 @@ window.__ModuleLoader__.load({
       var model = new SETTINGS_FORM_MODEL(scope, [
         { field: 'enabled', format: booleanText, parse: parseBoolean },
         { field: 'recap', format: booleanText, parse: parseBoolean },
+        { field: 'recapProgress', format: booleanText, parse: parseBoolean },
+        numberField('recapStallSeconds', 600, 60, 3600, 60),
+        numberField('pendingTurns', 3, 1, 20, 1),
         { field: 'recapActivity', format: booleanText, parse: parseBoolean },
         textField('recapModelChain'),
-        { field: 'today', format: booleanText, parse: parseBoolean },
+        choiceField('defaultTab', DEFAULT_TAB_VALUES, 'recaps'),
         choiceField('verbosity', VERBOSITY_OPTIONS, 'low'),
         { field: 'actionable', format: booleanText, parse: parseBoolean },
         { field: 'eli5', format: booleanText, parse: parseBoolean },
@@ -2264,9 +2660,12 @@ window.__ModuleLoader__.load({
           ...model.shell(),
           enabled: model.field('enabled'),
           recap: model.field('recap'),
+          recapProgress: model.field('recapProgress'),
+          recapStallSeconds: model.field('recapStallSeconds'),
+          pendingTurns: model.field('pendingTurns'),
           recapActivity: model.field('recapActivity'),
           recapModelChain: model.field('recapModelChain'),
-          today: model.field('today'),
+          defaultTab: model.field('defaultTab'),
           verbosity: model.field('verbosity'),
           actionable: model.field('actionable'),
           eli5: model.field('eli5'),
@@ -2462,7 +2861,7 @@ window.__ModuleLoader__.load({
 
     function BundleSettingsPage(props) {
       var t = props.t
-      if (props.view === 'summary') return tr(t, 'settings.summary', '预测下一句，输入框上给一行进度；右侧面板整理待跟进的事、回看历史摘要，并可旁问且不污染上下文。')
+      if (props.view === 'summary') return tr(t, 'settings.summary', '预测下一句，输入框上给一行进度；右侧面板按轮次看摘要、进度和待跟进，并可旁问且不污染上下文。')
 
       var useSettings = props.useSettings
       var lineAdvancedState = useState(false)
@@ -2478,9 +2877,12 @@ window.__ModuleLoader__.load({
       var emptyField = { text: '', overridden: false, invalid: false }
       var enabled = state.enabled || emptyField
       var recap = state.recap || emptyField
+      var recapProgress = state.recapProgress || emptyField
+      var recapStallSeconds = state.recapStallSeconds || emptyField
+      var pendingTurns = state.pendingTurns || emptyField
       var recapActivity = state.recapActivity || emptyField
       var recapModelChain = state.recapModelChain || emptyField
-      var todayField = state.today || emptyField
+      var defaultTab = state.defaultTab || emptyField
       var verbosity = state.verbosity || emptyField
       var actionable = state.actionable || emptyField
       var eli5 = state.eli5 || emptyField
@@ -2504,6 +2906,9 @@ window.__ModuleLoader__.load({
       })
       var toolRepairLangOptions = TOOLREPAIR_LANGS.map(function (id) {
         return { id: id, label: tr(t, 'settings.toolRepairLang.' + id, id === 'en' ? 'English' : '中文') }
+      })
+      var defaultTabOptions = DEFAULT_TAB_VALUES.map(function (id) {
+        return { id: id, label: tr(t, 'settings.defaultTab.' + id, id) }
       })
       var styleOptions = STYLE_OPTIONS.map(function (id) {
         var name = tr(t, 'reply.style.' + id, id)
@@ -2551,15 +2956,17 @@ window.__ModuleLoader__.load({
               onChange: function (next) { edit('enabled', String(next)) },
               onReset: function () { reset('enabled') },
             }),
-            h(ToggleField, {
-              key: 'today',
+            h(SelectField, {
+              key: 'defaultTab',
               t: t,
-              title: tr(t, 'settings.today.title', '整理待跟进的事'),
-              description: tr(t, 'settings.today.description', '把过去会话里提醒过你、但你还没处理的事整理成一小份清单'),
-              field: todayField,
+              title: tr(t, 'settings.defaultTab.title', '默认 Tab'),
+              description: tr(t, 'settings.defaultTab.description', '打开右侧 WDX Relief 面板时先显示哪个 Tab；默认「会话回顾」'),
+              options: defaultTabOptions,
+              value: defaultTab.text || 'recaps',
+              overridden: defaultTab.overridden === true,
               disabled: disabled,
-              onChange: function (next) { edit('today', String(next)) },
-              onReset: function () { reset('today') },
+              onChange: function (next) { edit('defaultTab', next) },
+              onReset: function () { reset('defaultTab') },
             }),
             h('div', {
               key: 'btwHint',
@@ -2570,6 +2977,16 @@ window.__ModuleLoader__.load({
           h('div', { key: 'turnLine', className: 'wdxs-group' }, [
             h('div', { key: 'head', className: 'wdxs-groupHead' }, tr(t, 'settings.turnLine', '输入框上的一行')),
             h('div', { key: 'note', className: 'wdxs-desc', style: { marginBottom: '8px' } }, tr(t, 'settings.turnLine.note', '')),
+            h(ToggleField, {
+              key: 'recapProgress',
+              t: t,
+              title: tr(t, 'settings.recapProgress.title', '实时进度'),
+              description: tr(t, 'settings.recapProgress.description', ''),
+              field: recapProgress,
+              disabled: disabled,
+              onChange: function (next) { edit('recapProgress', String(next)) },
+              onReset: function () { reset('recapProgress') },
+            }),
             h(ToggleField, {
               key: 'recap',
               t: t,
@@ -2599,6 +3016,32 @@ window.__ModuleLoader__.load({
             }, lineAdvanced ? tr(t, 'settings.advancedHide', '收起高级设置') : tr(t, 'settings.advanced', '高级（一般不用改）')),
             lineAdvanced
               ? h('div', { key: 'advancedFields' }, [
+                  h(NumberField, {
+                    key: 'stallSeconds',
+                    t: t,
+                    title: tr(t, 'settings.recapStallSeconds.title', '进度记录间隔（秒）'),
+                    description: tr(t, 'settings.recapStallSeconds.description', ''),
+                    field: recapStallSeconds,
+                    min: 60,
+                    max: 3600,
+                    step: 60,
+                    disabled: disabled || recapProgress.text === 'false',
+                    onChange: function (next) { edit('recapStallSeconds', next) },
+                    onReset: function () { reset('recapStallSeconds') },
+                  }),
+                  h(NumberField, {
+                    key: 'pendingTurns',
+                    t: t,
+                    title: tr(t, 'settings.pendingTurns.title', '待跟进窗口（最近 N 轮）'),
+                    description: tr(t, 'settings.pendingTurns.description', '在「会话回顾」里把最近这么多轮的问题/下一步标成待跟进；默认 3'),
+                    field: pendingTurns,
+                    min: 1,
+                    max: 20,
+                    step: 1,
+                    disabled: disabled,
+                    onChange: function (next) { edit('pendingTurns', next) },
+                    onReset: function () { reset('pendingTurns') },
+                  }),
                   h(TextField, {
                     key: 'modelChain',
                     t: t,
@@ -2758,9 +3201,16 @@ window.__ModuleLoader__.load({
 
       var boundT = typeof ctx.locale.bind === 'function' ? ctx.locale.bind(NS) : function (key) { return key }
 
-      function openReliefSession(id) {
-        var workspace = ctx.get('uiWorkspace')
-        if (workspace && typeof workspace.openSession === 'function') workspace.openSession(id)
+      /** 从输入框上方那一行跳到「会话回顾」并筛选出进度记录。 */
+      function openProgressTab() {
+        try {
+          var sidebar = ctx.sidebarRight || (typeof ctx.get === 'function' ? ctx.get('sidebarRight') : undefined)
+          if (sidebar && typeof sidebar.openTab === 'function') {
+            sidebar.openTab(RELIEF_TAB, { params: { wdxReliefTab: 'recaps', wdxRecapFilter: 'progress' } })
+          }
+        } catch (error) {
+          console.warn('[wdx-relief] open progress tab failed', error)
+        }
       }
 
       ctx.effect(function () {
@@ -2784,12 +3234,48 @@ window.__ModuleLoader__.load({
           name: 'sidebar.right.pane.tab',
           key: RELIEF_TAB,
           locale: NS,
+          inject: function (sessionId) {
+            var value = {}
+            try {
+              var snapshot = formSource.getSnapshot()
+              if (snapshot && snapshot.value && typeof snapshot.value === 'object') value = snapshot.value
+            } catch (error) {
+              // 配置未就绪时按默认 Tab 处理。
+            }
+            var defaultTab = value.defaultTab === 'btw' ? 'btw' : 'recaps'
+            var runningSource = null
+            try {
+              var binding = ctx.sessions && typeof ctx.sessions.binding === 'function' ? ctx.sessions.binding(sessionId) : null
+              runningSource = binding && binding.session ? binding.session : null
+            } catch (error) {
+              runningSource = null
+            }
+            var hooks = { settings: formSource }
+            if (runningSource !== null) hooks.running = runningSource
+            return { sessionId: sessionId, defaultTab: defaultTab, readFeed: readTurnFeed, hooks: hooks }
+          },
         }, function ReliefTabBody(props) {
+          var tabInfo = props && typeof props.useTabInfo === 'function' ? props.useTabInfo() : null
+          var navigation = tabInfo && tabInfo.tab && tabInfo.tab.navigation ? tabInfo.tab.navigation : null
+          var params = navigation && navigation.params && typeof navigation.params === 'object' ? navigation.params : null
+          var running = props && typeof props.useRunning === 'function'
+            ? props.useRunning(function (snapshot) { return Boolean(snapshot && snapshot.running) })
+            : false
+          var settings = props && typeof props.useSettings === 'function'
+            ? props.useSettings(function (snapshot) { return snapshot })
+            : undefined
+          var configuredTurns = settings && settings.value ? Number(settings.value.pendingTurns) : 3
+          var pendingTurns = Number.isFinite(configuredTurns) ? Math.max(1, Math.min(20, Math.round(configuredTurns))) : 3
           return h(ReliefPanel, {
             sessionId: props && props.sessionId,
             t: props && props.t,
-            openSession: openReliefSession,
+            running: running,
             modelDirectories: ctx.modelDirectories,
+            defaultTab: props && props.defaultTab,
+            readFeed: props && props.readFeed,
+            requestedTab: params ? params.wdxReliefTab : undefined,
+            requestedFilter: params ? params.wdxRecapFilter : undefined,
+            requestedRevision: navigation && typeof navigation.revision === 'number' ? navigation.revision : 0,
           })
         })
       })
@@ -2827,6 +3313,7 @@ window.__ModuleLoader__.load({
               return {
                 sessionId: sessionId,
                 readFeed: readTurnFeed,
+                openProgress: openProgressTab,
                 hooks: { settings: formSource },
               }
             },
@@ -2858,6 +3345,11 @@ window.__ModuleLoader__.load({
     exports.TurnRecapDock = TurnRecapDock
     exports.RecapDock = TurnRecapDock
     exports.deriveTurnView = deriveTurnView
+    exports.formatDuration = formatDuration
+    exports.lineSettings = lineSettings
+    exports.groupRecapEntries = groupRecapEntries
+    exports.progressEntryOf = progressEntryOf
+    exports.turnStatusInfo = turnStatusInfo
     exports.buildTurnSegments = buildTurnSegments
     exports.activityText = activityText
     exports.describeToolCall = describeToolCall

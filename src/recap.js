@@ -4,8 +4,8 @@
  * 设计约束：
  * - 纯 UI：只读 `deriveMessages()`，模型调用走 `ctx.llm.stream`，不写会话日志、
  *   不 append 消息、不注入 system prompt，因此摘要永远不会进入模型上下文；
- * - 逐轮触发，但不是每轮都烧模型：`minTurns` 之前不生成，`cooldownTurns`
- *   控制更新频率，`similarityThreshold` 让变化不大时沿用上一行；
+ * - 逐轮触发：默认从第 1 轮就开始生成；`cooldownTurns` 控制更新频率，
+ *   `similarityThreshold` 让变化不大时沿用上一行的文字（历史仍保留当轮一条）；
  * - 模型链：先按用户配置的 `provider/model` 顺序尝试，再退到自动挑出的便宜模型，
  *   最后退回当前默认模型；
  * - 模型失败时退回「要求 · 结果」的本地短拼接，保证这一行不会空着。
@@ -19,7 +19,7 @@ const MAX_SUMMARY_CHARS = 120
 const MAX_OUTPUT_TOKENS = 512
 const SUMMARY_TIMEOUT_MS = 8000
 
-export const DEFAULT_MIN_TURNS = 3
+export const DEFAULT_MIN_TURNS = 1
 export const DEFAULT_COOLDOWN_TURNS = 1
 export const DEFAULT_SIMILARITY_THRESHOLD = 0.9
 export const DEFAULT_MAX_WORDS = 40
@@ -597,6 +597,14 @@ export function createRecapService({ config, sessions, llm, defaultSelection, hi
             generatedTurn: turn,
           }
           remember(sessionId, kept)
+          // 摘要文字沿用了上一轮，但这一轮仍然要有一条自己的记录，方便按轮次分组回看。
+          if (history) {
+            try {
+              history.append({ sessionId, seq: session.seq, ...recap, summary: kept.recap.summary, turn })
+            } catch (error) {
+              log('[wdx-relief] recap history append failed', error)
+            }
+          }
           return { recap: kept.recap, turn, kept: true, model: kept.model, degraded: generated === null }
         }
 

@@ -4,9 +4,8 @@
  * 七件事：
  * 1. 注册认证路由 `POST /api/wdx-relief/predict`，按会话日志生成「下一句输入」；
  * 2. 注册认证路由 `POST /api/wdx-relief/recap`，按最近一轮生成「现在到哪」；
- * 3. 注册认证路由 `POST /api/wdx-relief/today`，整理「用户还没跟进的事」；
- *    `POST /api/wdx-relief/today/dismiss`、`.../restore` 记录面板里清掉 / 撤销的条目；
- *    `POST /api/wdx-relief/recaps` 读取某会话生成过的回顾历史；
+ * 3. 注册认证路由 `POST /api/wdx-relief/recaps` 读取某会话生成过的回顾历史；
+ *    `POST /api/wdx-relief/progress` 追加一条运行中的进度快照（和摘要共用一份历史）；
  * 4. 注册认证路由 `POST /api/wdx-relief/btw`，回答右侧面板里的旁问；
  * 5. 把所有设置暴露成 volatile Config，供设置页读写并即时生效；
  * 6. 注册 `wdx-relief:reply-style` system prompt section，把回复风格编译成短指令；
@@ -20,11 +19,9 @@ import Schema from '@deepseek-ai/schemastery'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createBtwService } from './src/btw.js'
-import { createFollowupStore } from './src/followups.js'
 import { createPredictionService } from './src/prediction.js'
 import { createRecapService } from './src/recap.js'
 import { createRecapHistory } from './src/recapHistory.js'
-import { createTodayService } from './src/today.js'
 import { installToolCallRepair } from './src/toolCallRepair.js'
 import { STYLE_VALUES, VERBOSITY_VALUES, buildStylePrompt } from './src/style.js'
 
@@ -35,11 +32,9 @@ export const inject = ['connection', 'sessions', 'tools']
 
 export const ROUTE_PATH = '/api/wdx-relief/predict'
 export const RECAP_PATH = '/api/wdx-relief/recap'
-export const TODAY_PATH = '/api/wdx-relief/today'
 export const RECAPS_PATH = '/api/wdx-relief/recaps'
+export const PROGRESS_PATH = '/api/wdx-relief/progress'
 export const BTW_PATH = '/api/wdx-relief/btw'
-export const DISMISS_PATH = '/api/wdx-relief/today/dismiss'
-export const RESTORE_PATH = '/api/wdx-relief/today/restore'
 
 export const Config = Schema.object({
   enabled: Schema.boolean()
@@ -54,14 +49,31 @@ export const Config = Schema.object({
     .default(false)
     .volatile()
     .description('输入框上方那一行的活动流水：正在读文件、跑命令、改代码，本地生成，零模型调用'),
+  recapProgress: Schema.boolean()
+    .default(true)
+    .volatile()
+    .description('运行中每 10 分钟记录一条进度，整合进右侧栏的「会话回顾」，不单开 Tab'),
+  recapStallSeconds: Schema.number()
+    .default(600)
+    .volatile()
+    .description('多少秒没有新输出后开始记录一条进度，之后每隔这么久再记一条；默认 600 秒 = 10 分钟'),
+  pendingTurns: Schema.number()
+    .default(3)
+    .volatile()
+    .description('「会话回顾」里把最近几轮标成待跟进（1–20，默认 3）'),
   recapModelChain: Schema.string()
     .default('')
     .volatile()
     .description('摘要模型链，按顺序尝试 provider/model；留空自动挑便宜模型，最后退回默认模型'),
+  defaultTab: Schema.union(['untouched', 'recaps', 'btw'])
+    .default('recaps')
+    .volatile()
+    .description('右侧 WDX Relief 面板第一次打开时默认显示哪个 Tab：会话回顾 / 旁问'),
+  /** 已移除的跨会话待跟进开关；保留字段只为旧 profile 的配置能继续通过校验。 */
   today: Schema.boolean()
     .default(true)
     .volatile()
-    .description('把过去会话里「提醒过你但你没跟进」的事整理成一小份清单'),
+    .description('（已移除）旧版「待跟进」总开关，保留仅为兼容旧配置'),
   verbosity: Schema.union(VERBOSITY_VALUES)
     .default('low')
     .volatile()
@@ -215,27 +227,12 @@ export function apply(ctx, config) {
     log,
   })
 
-  const followupStore = createFollowupStore({
-    file: join(dshHome, 'wdx-relief', 'followups.json'),
-    log,
-  })
-
   const recapService = createRecapService({
     config,
     sessions: ctx.sessions,
     llm: () => ctx.get('llm'),
     defaultSelection,
     history: recapHistory,
-    log,
-  })
-
-  const todayService = createTodayService({
-    config,
-    sessions: ctx.sessions,
-    sessionQuery: () => ctx.get('sessionQuery'),
-    llm: () => ctx.get('llm'),
-    defaultSelection,
-    dismissals: followupStore,
     log,
   })
 
@@ -287,14 +284,8 @@ export function apply(ctx, config) {
         return { items: recapHistory.list(sessionId) }
       }),
     })
-    const disposeToday = ctx.connection.fetch.register({
-      path: TODAY_PATH,
-      methods: ['POST'],
-      requestBody: 'buffered',
-      fetch: (request) => handleRequest(request, (sessionId, signal) => todayService.list(sessionId, signal, { force: request.headers.get('x-wdx-force') === '1' })),
-    })
-    const disposeDismiss = ctx.connection.fetch.register({
-      path: DISMISS_PATH,
+    const disposeProgress = ctx.connection.fetch.register({
+      path: PROGRESS_PATH,
       methods: ['POST'],
       requestBody: 'buffered',
       fetch: (request) => handleRequest(request, (sessionId, signal, body) => {
@@ -303,20 +294,38 @@ export function apply(ctx, config) {
           error.code = 'invalid-params'
           throw error
         }
-        return { changed: followupStore.dismiss(sessionId, body.text) }
-      }),
-    })
-    const disposeRestore = ctx.connection.fetch.register({
-      path: RESTORE_PATH,
-      methods: ['POST'],
-      requestBody: 'buffered',
-      fetch: (request) => handleRequest(request, (sessionId, signal, body) => {
-        if (typeof sessionId !== 'string' || sessionId === '') {
-          const error = new Error('sessionId is required')
+        const session = ctx.sessions.get(sessionId)
+        if (session === undefined) {
+          const error = new Error(`session "${sessionId}" is unavailable`)
+          error.code = 'not-found'
+          throw error
+        }
+        const entry = body && typeof body.entry === 'object' && body.entry !== null ? body.entry : body
+        const turn = Number(entry.turn)
+        const bucket = Number(entry.bucket)
+        const summary = typeof entry.summary === 'string' ? entry.summary.slice(0, 500) : ''
+        if (!Number.isInteger(turn) || turn < 1 || !Number.isInteger(bucket) || bucket < 1 || summary.trim() === '') {
+          const error = new Error('turn, bucket and summary are required')
           error.code = 'invalid-params'
           throw error
         }
-        return { changed: followupStore.restore(sessionId, body.text) }
+        return {
+          appended: recapHistory.append({
+            sessionId,
+            seq: session.seq,
+            kind: 'progress',
+            turn,
+            bucket,
+            anchor: Number(entry.anchor) || 0,
+            status: entry.status === 'running' ? 'running' : 'stalled',
+            summary,
+            activity: typeof entry.activity === 'string' ? entry.activity.slice(0, 300) : '',
+            elapsedMs: Number(entry.elapsedMs) || 0,
+            silenceMs: Number(entry.silenceMs) || 0,
+            steps: Number(entry.steps) || 0,
+            at: Date.now(),
+          }),
+        }
       }),
     })
     const disposeBtw = ctx.connection.fetch.register({
@@ -329,11 +338,9 @@ export function apply(ctx, config) {
       void disposePredict()
       void disposeRecap()
       void disposeRecaps()
-      void disposeToday()
-      void disposeDismiss()
-      void disposeRestore()
+      void disposeProgress()
       void disposeBtw()
     }
-  }, 'wdx-relief: prediction, recap, today, followup and btw routes')
-  console.log(`[wdx-relief] 路由已注册：${ROUTE_PATH}、${RECAP_PATH}、${RECAPS_PATH}、${TODAY_PATH}、${DISMISS_PATH}、${RESTORE_PATH}、${BTW_PATH}`)
+  }, 'wdx-relief: prediction, recap, progress and btw routes')
+  console.log(`[wdx-relief] 路由已注册：${ROUTE_PATH}、${RECAP_PATH}、${RECAPS_PATH}、${PROGRESS_PATH}、${BTW_PATH}`)
 }
