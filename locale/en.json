@@ -1,7 +1,7 @@
 {
   "meta": {
     "title": "WDX Relief",
-    "description": "Take the friction out of daily DSH work: predict your next message, keep a turn line above the composer that records progress every 10 minutes without output, review summaries, progress and pending questions grouped by turn in the right panel, and ask side questions with a model picker—without polluting the model context.",
+    "description": "Take the friction out of daily DSH work: predict your next message, keep a turn line above the composer that records progress at the configured interval (10 minutes by default) when a turn runs long without replying to you, review summaries, progress and pending questions grouped by turn in the right panel, and ask side questions with a model picker—without polluting the model context.",
     "detail": "docs/DETAIL.md"
   }
 }

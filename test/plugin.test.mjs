@@ -20,17 +20,23 @@ function assistantMessage(text) {
 
 function createHostContext(output = '修一下失败的测试') {
   const session = {
+    id: 'session-1',
     seq: 3,
     deriveMessages: () => [userMessage('测试挂了'), assistantMessage('要我修吗？')],
   }
   const routes = new Map()
   let llmCalls = 0
   const listeners = []
+  const handlers = new Map()
   const ctx = {
     sessions: { get: (id) => (id === 'session-1' ? session : undefined) },
     effect: (fn) => fn(),
     on(name, listener) {
       listeners.push(name)
+      if (typeof listener === 'function') {
+        if (!handlers.has(name)) handlers.set(name, [])
+        handlers.get(name).push(listener)
+      }
       return () => {}
     },
     inject: (services, callback) => callback({
@@ -72,9 +78,13 @@ function createHostContext(output = '修一下失败的测试') {
   }
   return {
     ctx,
+    session,
     route: (path = ROUTE_PATH) => routes.get(path),
     llmCalls: () => llmCalls,
     listeners: () => listeners.slice(),
+    call(name, ...args) {
+      for (const listener of handlers.get(name) ?? []) listener(...args)
+    },
   }
 }
 
@@ -88,6 +98,16 @@ function recapConfig(options = {}) {
     recapModelChain: options.chain ?? '',
   }
   return Object.fromEntries(Object.entries(values).map(([name, value]) => [name, { get: () => value }]))
+}
+
+
+/** 模型调用是异步的：轮询到条件成立或超时，避免用固定 sleep 猜时序。 */
+async function waitFor(predicate, timeoutMs = 1000) {
+  const deadline = Date.now() + timeoutMs
+  while (!predicate()) {
+    if (Date.now() > deadline) throw new Error('waitFor timed out')
+    await new Promise((resolve) => setTimeout(resolve, 5))
+  }
 }
 
 function request(body, path = ROUTE_PATH) {
@@ -219,6 +239,76 @@ test('recaps route lists generated recap history for one session', async () => {
   assert.deepEqual((await cleared.json()).data.items, [])
   const afterClear = await route.fetch(request({ sessionId: 'session-1' }, RECAPS_PATH))
   assert.deepEqual((await afterClear.json()).data.items, [])
+
+  // 清空历史也要丢掉内存缓存；否则当前轮继续命中缓存，列表却永远是空的。
+  const beforeRegenerate = host.llmCalls()
+  const regenerated = await host.route(RECAP_PATH).fetch(request({ sessionId: 'session-1' }, RECAP_PATH))
+  assert.equal((await regenerated.json()).data.cached, undefined)
+  assert.equal(host.llmCalls(), beforeRegenerate + 1)
+  const refilled = await route.fetch(request({ sessionId: 'session-1' }, RECAPS_PATH))
+  assert.equal((await refilled.json()).data.items.length, 1)
+  await route.fetch(request({ sessionId: 'session-1', clear: true }, RECAPS_PATH))
+})
+
+test('recap route records a local fallback so the panel matches the composer line', async () => {
+  const host = createHostContext('')
+  apply(host.ctx, recapConfig())
+  await host.route(RECAPS_PATH).fetch(request({ sessionId: 'session-1', clear: true }, RECAPS_PATH))
+
+  const response = await host.route(RECAP_PATH).fetch(request({ sessionId: 'session-1' }, RECAP_PATH))
+  const body = await response.json()
+  assert.equal(body.data.degraded, true)
+  assert.match(body.data.recap.summary, /测试挂了/)
+
+  const list = await host.route(RECAPS_PATH).fetch(request({ sessionId: 'session-1' }, RECAPS_PATH))
+  const items = (await list.json()).data.items
+  assert.equal(items.length, 1)
+  assert.equal(items[0].summary, body.data.recap.summary)
+  assert.equal(items[0].degraded, true)
+  await host.route(RECAPS_PATH).fetch(request({ sessionId: 'session-1', clear: true }, RECAPS_PATH))
+})
+
+test('turn/end fills in a recap when no client is watching', async () => {
+  const host = createHostContext()
+  apply(host.ctx, recapConfig())
+  await host.route(RECAPS_PATH).fetch(request({ sessionId: 'session-1', clear: true }, RECAPS_PATH))
+
+  // 没有前端请求，只有会话自己发出的 turn/end。
+  host.call('session/event', host.session, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } })
+  await waitFor(() => host.llmCalls() === 1)
+  assert.equal(host.llmCalls(), 1)
+
+  const list = await host.route(RECAPS_PATH).fetch(request({ sessionId: 'session-1' }, RECAPS_PATH))
+  const items = (await list.json()).data.items
+  assert.equal(items.length, 1)
+  assert.equal(items[0].summary, '修一下失败的测试')
+  assert.equal(items[0].turn, 1)
+
+  // 前端随后为同一轮请求时命中缓存，不会重复调模型。
+  const again = await host.route(RECAP_PATH).fetch(request({ sessionId: 'session-1' }, RECAP_PATH))
+  const body = await again.json()
+  assert.equal(body.data.cached, true)
+  assert.equal(host.llmCalls(), 1)
+  await host.route(RECAPS_PATH).fetch(request({ sessionId: 'session-1', clear: true }, RECAPS_PATH))
+})
+
+test('turn/end fallback skips subagent sessions and the disabled switch', async () => {
+  const host = createHostContext()
+  apply(host.ctx, recapConfig())
+  await host.route(RECAPS_PATH).fetch(request({ sessionId: 'session-1', clear: true }, RECAPS_PATH))
+
+  host.session.header = { origin: 'subagent' }
+  host.call('session/event', host.session, { type: 'turn/end', data: { turn: 1, reason: { kind: 'completed' } } })
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  assert.equal(host.llmCalls(), 0)
+
+  host.session.header = {}
+  const off = createHostContext()
+  apply(off.ctx, recapConfig({ recap: false }))
+  off.call('session/event', off.session, { type: 'turn/end', data: { turn: 1 } })
+  await new Promise((resolve) => setTimeout(resolve, 50))
+  assert.equal(off.llmCalls(), 0)
+  await host.route(RECAPS_PATH).fetch(request({ sessionId: 'session-1', clear: true }, RECAPS_PATH))
 })
 
 test('progress route appends one snapshot per turn and bucket', async () => {
@@ -623,7 +713,8 @@ test('progress snapshots use the 10 minute bucket and stay compact', () => {
   assert.equal(first.silenceMs, 600000)
   assert.equal(first.elapsedMs, 602000)
   assert.equal(first.steps, 1)
-  assert.equal(first.anchor, 2000)
+  assert.equal(first.anchor, 1000)
+  assert.equal(client.deriveTurnView(entries, 603000).quietMs, 602000)
   assert.match(first.summary, /第 3 轮/)
   assert.match(first.summary, /等待 10 分/)
   assert.match(first.activity, /job_output/)
@@ -632,6 +723,53 @@ test('progress snapshots use the 10 minute bucket and stay compact', () => {
   assert.equal(second.bucket, 2)
   assert.equal(second.silenceMs, 1200000)
   assert.match(second.summary, /等待 20 分/)
+})
+
+
+test('progress fires while tools keep running without a reply', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+  const client = loaded.factory((id) => {
+    if (id === 'react') return { createElement() {}, useState() {}, useEffect() {}, useRef() {}, useLayoutEffect() {} }
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+
+  const t = (key) => key
+  const settings = { stallMs: 600000 }
+  // 19 分钟一直在跑工具和思考，中间没有任何给用户的正文回复。
+  const entries = [
+    { type: 'event', event: { type: 'turn/start', seq: 1, time: 0, data: { turn: 1 } } },
+    { type: 'event', event: { type: 'step/start', seq: 2, time: 0, data: { turn: 1, step: 1 } } },
+    { type: 'event', event: { type: 'tool/call', seq: 3, time: 60000, data: { callId: 'c1', name: 'bash', arguments: '{"command":"job_output"}', turn: 1, step: 1 } } },
+    { type: 'event', event: { type: 'tool/result', seq: 4, time: 120000, data: { turn: 1, step: 1, message: { source: { callId: 'c1' } } } } },
+    { type: 'transient', event: { type: 'assistant/live-chunk', seq: 5, time: 300000, data: { turn: 1, step: 2, chunk: { type: 'reasoning-delta', text: '继续排查' } } } },
+    { type: 'event', event: { type: 'tool/call', seq: 6, time: 900000, data: { callId: 'c2', name: 'grep', arguments: '{"pattern":"foo"}', turn: 1, step: 2 } } },
+  ]
+  const view = client.deriveTurnView(entries, 1140000)
+  assert.equal(view.running, true)
+  assert.equal(view.silenceMs, 240000)
+  assert.equal(view.lastReplyAt, 0)
+  assert.equal(view.quietMs, 1140000)
+
+  const entry = client.progressEntryOf(view, settings, t)
+  assert.equal(entry.bucket, 1)
+  assert.equal(entry.anchor, 0)
+  assert.match(entry.summary, /第 1 轮/)
+  assert.match(entry.summary, /等待 10 分/)
+
+  const segments = client.buildTurnSegments(view, { progress: true, stallMs: 600000, activity: false, summary: true }, t, null)
+  assert.deepEqual([...segments.map((segment) => segment.key)], ['progress', 'activity'])
+  assert.match(segments[0].text, /等待 10 分/)
+
+  // 一旦有正文回复，等待重新计时；工具事件不会把它重置。
+  const replied = [...entries, { type: 'event', event: { type: 'assistant/message', seq: 7, time: 1000000, data: { turn: 1, message: { role: 'assistant', content: [{ type: 'text', text: '先说下结论' }] } } } }]
+  const repliedView = client.deriveTurnView(replied, 1150000)
+  assert.equal(repliedView.lastReplyAt, 1000000)
+  assert.equal(repliedView.quietMs, 150000)
+  assert.equal(repliedView.silenceMs, 150000)
 })
 
 test('recap entries group by turn and support both orders', () => {
@@ -723,7 +861,7 @@ test('recap history filters summaries and progress entries', () => {
   assert.match(json, /最早在前/)
   assert.match(json, /job_output/)
   assert.match(json, /总耗时/)
-  assert.match(json, /无新输出/)
+  assert.match(json, /未回复/)
   assert.match(json, /等待/)
   assert.match(json, /wdxp-confirm/)
   assert.match(json, /确认清空/)
@@ -858,6 +996,57 @@ test('turn line renders a silent running turn with a progress shortcut', () => {
   assert.equal(opened, 1)
 })
 
+test('turn line shows a long busy turn that has no reply, and hides once replied', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+
+  function renderLine(entries) {
+    let calls = 0
+    const react = {
+      createElement(type, props, ...children) { return { type, props: props || {}, children } },
+      useState(initial) {
+        calls += 1
+        return [calls === 1 ? entries : initial, () => {}]
+      },
+      useEffect() {},
+      useRef(value) { return { current: value } },
+      useLayoutEffect() {},
+    }
+    const client = loaded.factory((id) => {
+      if (id === 'react') return react
+      if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+      throw new Error(`unexpected require: ${id}`)
+    })
+    return client.TurnRecapDock({
+      sessionId: 'session-1',
+      t: (key) => key,
+      readFeed: () => null,
+      openProgress: () => {},
+      useSession: () => true,
+      useInput: () => ({ draft: '', attachmentIds: [] }),
+      useSettings: () => ({ value: { recapProgress: true, recapStallSeconds: 600, recap: false } }),
+    })
+  }
+
+  const now = Date.now()
+  const busy = [
+    { type: 'event', event: { type: 'turn/start', seq: 1, time: now - 19 * 60000, data: { turn: 2 } } },
+    { type: 'event', event: { type: 'tool/call', seq: 2, time: now - 3 * 60000, data: { callId: 'c1', name: 'bash', arguments: '{"command":"job_output"}', turn: 2, step: 1 } } },
+  ]
+  const line = renderLine(busy)
+  assert.ok(line !== null)
+  const json = JSON.stringify(line)
+  assert.match(json, /data-state":"running/)
+  assert.match(json, /进行中/)
+  assert.match(json, /等待 10 分/)
+
+  // 同样的长时间运行，只要最近给过正文回复，就不再提示。
+  const replied = [...busy, { type: 'event', event: { type: 'assistant/message', seq: 3, time: now - 2 * 60000, data: { turn: 2, message: { role: 'assistant', content: [{ type: 'text', text: '先说明一下当前进展' }] } } } }]
+  assert.equal(renderLine(replied), null)
+})
+
 test('relief panel shows recap and aside tabs, defaulting to recap', () => {
   const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
   let loaded = null
@@ -908,6 +1097,37 @@ test('relief panel shows recap and aside tabs, defaulting to recap', () => {
   assert.equal(btw.children[0][0].type, 'div')
 })
 
+test('a cancelled aside answer is muted, not styled as an error', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+
+  const items = [{ id: '1', question: '还能继续吗？', status: 'cancelled', answer: '', error: '已取消' }]
+  let calls = 0
+  const react = {
+    createElement(type, props, ...children) { return { type, props: props || {}, children } },
+    useState(initial) {
+      calls += 1
+      if (calls === 2) return [items, () => {}]
+      return [initial, () => {}]
+    },
+    useEffect() {},
+    useRef(value) { return { current: value } },
+    useLayoutEffect() {},
+  }
+  const client = loaded.factory((id) => {
+    if (id === 'react') return react
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+
+  const tree = JSON.stringify(client.BtwSection({ sessionId: 's1', t: (key) => key }))
+  assert.match(tree, /wdxa-note/)
+  assert.match(tree, /已取消/)
+  assert.doesNotMatch(tree, /wdxa-error/)
+})
+
 test('recap history marks the latest turn as waiting for a reply', () => {
   const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
   let loaded = null
@@ -955,6 +1175,12 @@ test('recap history marks the latest turn as waiting for a reply', () => {
   const running = client.RecapHistorySection({ sessionId: 's1', t: (key) => key, running: true, currentTurn: 1 })
   assert.doesNotMatch(JSON.stringify(running), /wdxp-groupPending/)
 
+  // 运行中只压掉「正在跑的当前轮」；已经结束的上一轮待跟进仍然保留。
+  calls = 0
+  const runningPrevious = client.RecapHistorySection({ sessionId: 's1', t: (key) => key, running: true, currentTurn: 2 })
+  assert.match(JSON.stringify(runningPrevious), /wdxp-groupPending/)
+  assert.match(JSON.stringify(runningPrevious), /要继续吗？/)
+
   calls = 0
   const newer = client.RecapHistorySection({ sessionId: 's1', t: (key) => key, running: false, currentTurn: 4 })
   assert.doesNotMatch(JSON.stringify(newer), /wdxp-groupPending/)
@@ -1000,6 +1226,83 @@ test('recap history marks a next-step turn as pending', () => {
   assert.match(json, /wdxp-groupPending/)
   assert.match(json, /待跟进/)
   assert.match(json, /创建 GitHub Release/)
+})
+
+test('recap history empty/error/pending copy follows the actual switches and running state', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+
+  let presetStates = []
+  let calls = 0
+  const react = {
+    createElement(type, props, ...children) { return { type, props: props || {}, children } },
+    useState(initial) {
+      calls += 1
+      if (calls <= presetStates.length) return [presetStates[calls - 1], () => {}]
+      return [initial, () => {}]
+    },
+    useEffect() {},
+    useRef(value) { return { current: value } },
+    useLayoutEffect() {},
+  }
+  const client = loaded.factory((id) => {
+    if (id === 'react') return react
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+
+  function render(states, props) {
+    presetStates = states
+    calls = 0
+    return JSON.stringify(client.RecapHistorySection({ sessionId: 's1', t: (key) => key, ...props }))
+  }
+
+  const empty = [{ status: 'empty', items: [] }]
+  assert.match(render(empty, { summaryEnabled: false, progressEnabled: false }), /语义摘要和实时进度都已关闭/)
+  assert.match(render(empty, { summaryEnabled: true, progressEnabled: false }), /还没有摘要/)
+  assert.match(render(empty, { summaryEnabled: false, progressEnabled: true }), /还没有进度记录/)
+  assert.match(render(empty, { summaryEnabled: true, progressEnabled: true }), /还没有生成过摘要或进度记录/)
+
+  assert.match(render([{ status: 'error', items: [], code: '' }], {}), /重试/)
+  const routeMissing = render([{ status: 'error', items: [], code: 'route-missing' }], {})
+  assert.match(routeMissing, /回顾历史路由没加载/)
+  assert.doesNotMatch(routeMissing, /重试/)
+
+  const pendingItem = {
+    sessionId: 's1', seq: 1, kind: 'question', turn: 1, at: 1700000000000,
+    summary: '等你确认', user: '跑完了吗', question: '要继续吗？',
+  }
+  const progressOnly = {
+    sessionId: 's1', seq: 3, kind: 'progress', turn: 1, bucket: 1, anchor: 1000, at: 1700000002000,
+    status: 'stalled', summary: '第 1 轮 · 等待', elapsedMs: 600000, silenceMs: 600000, steps: 1,
+  }
+  const noSummaryPending = render([{ status: 'ready', items: [progressOnly] }, 'pending'], { running: false, currentTurn: 1, summaryEnabled: false, progressEnabled: true })
+  assert.match(noSummaryPending, /语义摘要已关闭/)
+
+  const runningPending = render([{ status: 'ready', items: [pendingItem] }, 'pending'], { running: true, currentTurn: 1 })
+  assert.match(runningPending, /正在跑的这轮不标待跟进/)
+  const count = render([{ status: 'ready', items: [pendingItem] }, 'all'], { running: false, currentTurn: 1 })
+  assert.match(count, /1 轮/)
+
+  const progressItem = {
+    sessionId: 's1', seq: 2, kind: 'progress', turn: 1, bucket: 1, anchor: 1000, at: 1700000001000,
+    status: 'stalled', summary: '第 1 轮 · 等待', elapsedMs: 600000, silenceMs: 600000, steps: 1,
+  }
+  const span = render([{ status: 'ready', items: [progressItem] }, 'all'], { running: false, currentTurn: 1 })
+  assert.match(span, /用时 10 分/)
+})
+
+test('the recap request for a finished turn is not aborted when the next turn starts', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  const start = code.indexOf('requested.current = key')
+  const end = code.indexOf("}, [cfg.summary, sessionId, running, view.turn])", start)
+  assert.ok(start >= 0 && end > start)
+  const block = code.slice(start, end)
+  // 新的一轮开始时 effect 会重跑；这里不能取消上一轮还在生成的摘要请求。
+  assert.doesNotMatch(block, /controller\.abort|abort\(\)/)
+  assert.match(block, /activeSession\.current !== sessionId/)
 })
 
 test('accepting a prediction does not permanently dismiss it', () => {

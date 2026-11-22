@@ -169,6 +169,35 @@ test('recap service caches by turn content and respects the toggle', async () =>
   assert.deepEqual(await disabled.recap('s1'), { recap: null, disabled: true })
 })
 
+test('recapCaptured summarizes the captured turn even after the session moved on', async () => {
+  let calls = 0
+  const service = createRecapService({
+    config: config({ minTurns: 1, cooldownTurns: 1 }),
+    // 会话已经进入下一轮：deriveMessages 只看得到第二轮。
+    sessions: { get: () => ({ seq: 9, deriveMessages: () => [message('user', '第二轮'), message('assistant', '二')] }) },
+    llm: {
+      stream: () => {
+        calls += 1
+        return fakeStream('第一轮的摘要')
+      },
+    },
+    defaultSelection: () => ({ provider: 'p', model: 'm' }),
+  })
+
+  const captured = { turn: 1, recap: { kind: 'answered', user: '第一轮', assistant: '一', question: null } }
+  const result = await service.recapCaptured('s1', captured)
+  assert.equal(result.turn, 1)
+  assert.equal(result.recap.summary, '第一轮的摘要')
+  assert.equal(calls, 1)
+
+  // 客户端随后请求同一轮时命中缓存，不再调模型。
+  const again = await service.recapCaptured('s1', captured)
+  assert.equal(again.cached, true)
+  assert.equal(calls, 1)
+
+  await assert.rejects(() => service.recapCaptured('s1', { turn: 0, recap: null }), (error) => error.code === 'invalid-params')
+})
+
 test('minTurns defers the first summary and cooldownTurns spaces updates', async () => {
   let messages = [message('user', '第一轮'), message('assistant', '一')]
   let calls = 0

@@ -519,6 +519,103 @@ export function createRecapService({ config, sessions, llm, defaultSelection, hi
     cache.set(sessionId, value)
   }
 
+  /**
+   * 用已经解析好的一轮内容生成 / 复用摘要。
+   * 客户端会传 sessionId 让这里自己 deriveMessages；Host 兜底则直接喂 turn/end
+   * 时拍下的快照，避免下一轮已经开始、摘要跑偏。
+   */
+  async function generateFrom(sessionId, session, turn, recap, signal, settings) {
+    const key = recapKey(turn, recap)
+    const previous = cache.get(sessionId)
+    if (previous !== undefined && previous.key === key) {
+      return { recap: previous.recap, turn, cached: true, model: previous.model }
+    }
+
+    if (turn < settings.minTurns) {
+      return { recap: previous?.recap ?? null, turn, skipped: 'min-turns' }
+    }
+
+    if (previous !== undefined && turn - previous.generatedTurn < settings.cooldownTurns) {
+      return { recap: previous.recap, turn, skipped: 'cooldown', model: previous.model }
+    }
+
+    const flightKey = `${sessionId}\u0000${key}`
+    const pending = inFlight.get(flightKey)
+    if (pending !== undefined) return pending
+
+    const task = (async () => {
+      const generated = await generateSummary({
+        llm,
+        defaultSelection,
+        recap,
+        chain: settings.chain,
+        maxWords: settings.maxWords,
+        signal,
+        log,
+      })
+      const text = generated === null ? limitWords(fallbackSummary(recap), settings.maxWords) : generated.text
+      const degraded = generated === null
+
+      // 生成失败（模型不可用、被取消）时不缓存，下一轮继续尝试；但兜底摘要既然
+      // 已经显示在输入框上方，就照样写入历史，避免「行上有、面板里没有」。
+      // 后续模型恢复并生成同轮摘要时，历史会把这条 degraded 记录替换掉。
+      if (degraded) {
+        if (history && text !== '') {
+          try {
+            history.append({ sessionId, seq: session.seq, ...recap, summary: text, turn, degraded: true })
+          } catch (error) {
+            log('[wdx-relief] recap history append failed', error)
+          }
+        }
+        return { recap: { ...recap, summary: text, turn }, turn, model: null, degraded: true }
+      }
+
+      if (previous !== undefined && previous.recap.summary && text !== '' && settings.similarityThreshold > 0 && similarity(previous.recap.summary, text) >= settings.similarityThreshold) {
+        const kept = {
+          ...previous,
+          key,
+          turn,
+          generatedTurn: turn,
+        }
+        remember(sessionId, kept)
+        // 摘要文字沿用了上一轮，但这一轮仍然要有一条自己的记录，方便按轮次分组回看。
+        if (history) {
+          try {
+            history.append({ sessionId, seq: session.seq, ...recap, summary: kept.recap.summary, turn })
+          } catch (error) {
+            log('[wdx-relief] recap history append failed', error)
+          }
+        }
+        return { recap: kept.recap, turn, kept: true, model: kept.model, degraded: generated === null }
+      }
+
+      const final = { ...recap, summary: text, turn }
+      const state = {
+        key,
+        turn,
+        recap: final,
+        generatedTurn: turn,
+        model: generated === null ? null : `${generated.provider}/${generated.model}`,
+      }
+      remember(sessionId, state)
+      if (history) {
+        try {
+          history.append({ sessionId, seq: session.seq, ...final })
+        } catch (error) {
+          log('[wdx-relief] recap history append failed', error)
+        }
+      }
+      return { recap: final, turn, model: state.model, degraded }
+    })()
+
+    inFlight.set(flightKey, task)
+    try {
+      return await task
+    } finally {
+      inFlight.delete(flightKey)
+    }
+  }
+
   return {
     /**
      * 返回 { recap, turn, cached?, skipped?, kept?, degraded?, model? }。
@@ -552,87 +649,38 @@ export function createRecapService({ config, sessions, llm, defaultSelection, hi
       const recap = buildRecap(messages)
       if (recap === null) return { recap: null, turn }
 
-      const key = recapKey(turn, recap)
-      const previous = cache.get(sessionId)
-      if (previous !== undefined && previous.key === key) {
-        return { recap: previous.recap, turn, cached: true, model: previous.model }
+      return generateFrom(sessionId, session, turn, recap, signal, settings)
+    },
+
+    /**
+     * Host 兜底：用 turn/end 时拍下的一轮内容生成摘要。
+     * 会话不在前台时客户端不会请求，这里补一条，避免关掉会话就永远没有摘要。
+     * 与客户端并发时靠上面的缓存 / inFlight 去重，不会重复调模型。
+     */
+    async recapCaptured(sessionId, captured, signal) {
+      if (typeof sessionId !== 'string' || sessionId === '') {
+        const error = new Error('sessionId is required')
+        error.code = 'invalid-params'
+        throw error
+      }
+      const settings = readRecapConfig(config)
+      if (!settings.enabled) return { recap: null, disabled: true }
+
+      const session = sessions.get(sessionId)
+      if (session === undefined) {
+        const error = new Error(`session "${sessionId}" is unavailable`)
+        error.code = 'not-found'
+        throw error
       }
 
-      if (turn < settings.minTurns) {
-        return { recap: previous?.recap ?? null, turn, skipped: 'min-turns' }
+      const turn = captured && Number.isInteger(captured.turn) ? captured.turn : 0
+      const recap = captured && captured.recap && typeof captured.recap === 'object' ? captured.recap : null
+      if (turn < 1 || recap === null) {
+        const error = new Error('captured turn and recap are required')
+        error.code = 'invalid-params'
+        throw error
       }
-
-      if (previous !== undefined && turn - previous.generatedTurn < settings.cooldownTurns) {
-        return { recap: previous.recap, turn, skipped: 'cooldown', model: previous.model }
-      }
-
-      const flightKey = `${sessionId}\u0000${key}`
-      const pending = inFlight.get(flightKey)
-      if (pending !== undefined) return pending
-
-      const task = (async () => {
-        const generated = await generateSummary({
-          llm,
-          defaultSelection,
-          recap,
-          chain: settings.chain,
-          maxWords: settings.maxWords,
-          signal,
-          log,
-        })
-        const text = generated === null ? limitWords(fallbackSummary(recap), settings.maxWords) : generated.text
-        const degraded = generated === null
-
-        // 生成失败（模型不可用、被取消）时不缓存、不写历史：这行只是当前轮的兜底，
-        // 下一轮继续尝试；否则一条本地拼接会沿用整个 cooldown 窗口。
-        if (degraded) {
-          return { recap: { ...recap, summary: text, turn }, turn, model: null, degraded: true }
-        }
-
-        if (previous !== undefined && previous.recap.summary && text !== '' && settings.similarityThreshold > 0 && similarity(previous.recap.summary, text) >= settings.similarityThreshold) {
-          const kept = {
-            ...previous,
-            key,
-            turn,
-            generatedTurn: turn,
-          }
-          remember(sessionId, kept)
-          // 摘要文字沿用了上一轮，但这一轮仍然要有一条自己的记录，方便按轮次分组回看。
-          if (history) {
-            try {
-              history.append({ sessionId, seq: session.seq, ...recap, summary: kept.recap.summary, turn })
-            } catch (error) {
-              log('[wdx-relief] recap history append failed', error)
-            }
-          }
-          return { recap: kept.recap, turn, kept: true, model: kept.model, degraded: generated === null }
-        }
-
-        const final = { ...recap, summary: text, turn }
-        const state = {
-          key,
-          turn,
-          recap: final,
-          generatedTurn: turn,
-          model: generated === null ? null : `${generated.provider}/${generated.model}`,
-        }
-        remember(sessionId, state)
-        if (history) {
-          try {
-            history.append({ sessionId, seq: session.seq, ...final })
-          } catch (error) {
-            log('[wdx-relief] recap history append failed', error)
-          }
-        }
-        return { recap: final, turn, model: state.model, degraded }
-      })()
-
-      inFlight.set(flightKey, task)
-      try {
-        return await task
-      } finally {
-        inFlight.delete(flightKey)
-      }
+      return generateFrom(sessionId, session, turn, recap, signal, settings)
     },
 
     /** 测试 / 会话销毁时清理缓存。 */

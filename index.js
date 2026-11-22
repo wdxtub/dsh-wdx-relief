@@ -20,7 +20,7 @@ import { homedir } from 'node:os'
 import { join } from 'node:path'
 import { createBtwService } from './src/btw.js'
 import { createPredictionService } from './src/prediction.js'
-import { createRecapService } from './src/recap.js'
+import { buildRecap, countUserTurns, createRecapService } from './src/recap.js'
 import { createRecapHistory } from './src/recapHistory.js'
 import { installToolCallRepair } from './src/toolCallRepair.js'
 import { STYLE_VALUES, VERBOSITY_VALUES, buildStylePrompt } from './src/style.js'
@@ -52,11 +52,11 @@ export const Config = Schema.object({
   recapProgress: Schema.boolean()
     .default(true)
     .volatile()
-    .description('运行中每 10 分钟记录一条进度，整合进右侧栏的「会话回顾」，不单开 Tab'),
+    .description('一轮跑久了还没给用户回复时，按设置的间隔记录一条进度（默认 10 分钟），整合进右侧栏的「会话回顾」，不单开 Tab'),
   recapStallSeconds: Schema.number()
     .default(600)
     .volatile()
-    .description('多少秒没有新输出后开始记录一条进度，之后每隔这么久再记一条；默认 600 秒 = 10 分钟'),
+    .description('一轮运行中多久没给用户回复后开始记录一条进度，之后每隔这么久再记一条；默认 600 秒 = 10 分钟'),
   pendingTurns: Schema.number()
     .default(3)
     .volatile()
@@ -236,6 +236,31 @@ export function apply(ctx, config) {
     log,
   })
 
+  // 客户端只在「这个会话在前台、且刚好看到本轮结束」时请求摘要；切走、关掉面板
+  // 或整页刷新都会漏掉这一轮。turn/end 时在 Host 侧补一条，快照在回调里同步拍下，
+  // 避免下一轮已经开始后把两轮混在一起。若客户端也在同一刻请求，服务层缓存 /
+  // inFlight 会合并成一次模型调用。
+  ctx.effect(() => ctx.on('session/event', (session, event) => {
+    try {
+      if (!event || event.type !== 'turn/end') return
+      if (readVolatile(config, 'recap') === false) return
+      const sessionId = session && typeof session.id === 'string' ? session.id : ''
+      if (sessionId === '') return
+      const header = session.header
+      // 子会话的每一轮都补摘要只会刷屏，也不在用户看的会话列表里。
+      if (header && header.origin === 'subagent') return
+      const messages = session.deriveMessages()
+      const turn = countUserTurns(messages)
+      const recap = buildRecap(messages)
+      if (turn < 1 || recap === null) return
+      recapService.recapCaptured(sessionId, { turn, recap }).catch((error) => {
+        log('host recap fallback failed', error)
+      })
+    } catch (error) {
+      log('host recap fallback failed', error)
+    }
+  }), 'wdx-relief: host recap fallback')
+
   const btwService = createBtwService({
     sessions: ctx.sessions,
     agents: () => ctx.get('agents'),
@@ -278,6 +303,9 @@ export function apply(ctx, config) {
           throw error
         }
         if (body.clear === true) {
+          // 清空历史时也丢掉内存里的当轮摘要；否则当前轮会继续命中缓存，
+          // 输入框上仍显示旧摘要，却不会重新写入刚被清空的列表。
+          recapService.clear(sessionId)
           recapHistory.clear(sessionId)
           return { items: [] }
         }

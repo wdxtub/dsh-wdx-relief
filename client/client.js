@@ -113,6 +113,8 @@ window.__ModuleLoader__.load({
       '@media (hover:hover){.wdxt-open:hover{opacity:1;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}}',
       '.wdxt-open:focus-visible{opacity:1;outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:1px}',
       '.wdxt-row:hover .wdxt-close,.wdxt-close:focus-visible{opacity:1}',
+      // 触屏没有 hover：让关闭键保持低透明度可见，否则用户看不到这个控件。
+      '@media (hover:none){.wdxt-close{opacity:.55}}',
       '@media (hover:hover){.wdxt-close:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}}',
       '.wdxa-pane{flex-direction:column;gap:8px;display:flex}',
       '.wdxa-meta{min-height:20px;align-items:center;gap:8px;display:flex}',
@@ -163,7 +165,7 @@ window.__ModuleLoader__.load({
       '.wdxp-rowText{overflow-wrap:anywhere;white-space:normal;flex:1;min-width:0;font-size:13px;line-height:19px}',
       '.wdxp-rowMeta{color:var(--dsw-alias-label-caption);white-space:nowrap;font-variant-numeric:tabular-nums;flex:none;font-size:11px;line-height:19px}',
       '.wdxp-note{color:var(--dsw-alias-label-tertiary);align-items:center;gap:6px;margin:2px 0 0;font-size:12px;line-height:18px;display:flex}',
-      '.wdxp-link{color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;padding:0;font:inherit;font-size:12px;line-height:18px;text-decoration:underline}',
+      '.wdxp-link{color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;padding:0;font:inherit;font-size:12px;line-height:18px;text-decoration:underline;align-self:flex-start;text-align:left}',
       '@media (hover:hover){.wdxp-link:hover{color:var(--dsw-alias-label-primary)}}',
       '.wdxp-confirm{background:var(--dsw-alias-bg-module-platform);border:.5px solid var(--dsw-alias-border-l2);border-radius:var(--dsw-radius-sm);align-items:center;flex-wrap:wrap;gap:6px 10px;padding:6px 10px;display:flex}',
       '.wdxp-confirmText{color:var(--dsw-alias-label-secondary);flex:1;min-width:0;font-size:11px;line-height:16px}',
@@ -236,13 +238,13 @@ window.__ModuleLoader__.load({
       'settings.title': '显示预测消息',
       'settings.description': '根据对话预测你接下来要发送的消息',
       'settings.turnLine': '输入框上的一行',
-      'settings.turnLine.note': '这一行只是界面提示，不进入模型上下文；实时进度和活动流水本地生成，语义摘要会调用一次便宜模型。',
+      'settings.turnLine.note': '这一行只是界面提示，不进入模型上下文；实时进度和活动流水本地生成，语义摘要打开时每轮调用一次便宜模型。',
       'settings.recap.title': '语义摘要',
-      'settings.recap.description': '每轮用一次便宜模型，写一行「现在到哪」',
+      'settings.recap.description': '每轮用一次便宜模型，写一行「现在到哪」；模型失败时退回本地摘要',
       'settings.recapProgress.title': '实时进度',
-      'settings.recapProgress.description': '长时间没有新输出时，每 10 分钟在「会话回顾」里记一条进度；和摘要放在同一列表里，可筛选',
+      'settings.recapProgress.description': '一轮跑久了还没给你回复时，按设置的间隔（默认 10 分钟）在「会话回顾」里记一条进度；工具调用和思考不算回复',
       'settings.recapStallSeconds.title': '进度记录间隔（秒）',
-      'settings.recapStallSeconds.description': '多少秒没有新输出后开始记录一条进度，之后每隔这么久再记一条；默认 600 秒 = 10 分钟',
+      'settings.recapStallSeconds.description': '一轮运行中多久没给你回复后开始记进度，之后每隔这么久再记一条；默认 600 秒 = 10 分钟',
       'settings.pendingTurns.title': '待跟进窗口（最近 N 轮）',
       'settings.pendingTurns.description': '在「会话回顾」里把最近这么多轮的问题/下一步标成待跟进；默认 3',
       'settings.recapActivity.title': '活动流水',
@@ -282,7 +284,7 @@ window.__ModuleLoader__.load({
       'turn.runningFor': '第 {turn} 轮 · 已进行 {duration}',
       'turn.took': '第 {turn} 轮 · 用时 {duration}',
       'turn.waitingFor': '等待 {duration}',
-      'turn.progressHint': '每 10 分钟在「会话回顾」记一条进度',
+      'turn.progressHint': '每 {duration} 在「会话回顾」记一条进度',
       'duration.seconds': '{s} 秒',
       'duration.minutes': '{m} 分 {s} 秒',
       'duration.minuteOnly': '{m} 分',
@@ -306,15 +308,20 @@ window.__ModuleLoader__.load({
       'panel.guide': '按轮次看进度与摘要，也可以随手旁问',
       'panel.refresh': '刷新',
       'section.recaps': '会话回顾',
-      'panel.recapEmpty': '还没有生成过摘要或进度记录；聊过一轮，或运行中长时间没有新输出时就会出现',
+      'panel.recapEmpty': '还没有生成过摘要或进度记录；聊过一轮，或一轮跑久了还没回复时就会出现',
+      'panel.recapEmptySummary': '还没有摘要；聊过一轮后会出现',
+      'panel.recapEmptyProgress': '还没有进度记录；一轮跑久了还没给你回复时会出现',
+      'panel.recapEmptyOff': '语义摘要和实时进度都已关闭；在插件设置里打开一个后才会记录',
       'panel.recapNoSession': '先打开一个会话',
       'panel.recapError': '回顾历史读取失败',
       'panel.recapRouteMissing': '回顾历史路由没加载；重启 DSH 后再试',
+      'panel.recapRetry': '重试',
       'panel.recapCount': '共 {count} 条',
       'panel.recapClear': '清空',
       'panel.recapClearConfirm': '删除当前会话的全部摘要和进度记录？',
       'panel.recapClearYes': '确认清空',
       'panel.recapClearNo': '取消',
+      'panel.recapClearFailed': '清空失败，请重试',
       'panel.recapRequest': '要求',
       'panel.recapReply': '回复',
       'panel.recapQuestion': '待回答',
@@ -322,6 +329,7 @@ window.__ModuleLoader__.load({
       'panel.recapFilterSummary': '摘要',
       'panel.recapFilterProgress': '进度',
       'panel.recapTagSummary': '摘要',
+      'panel.recapTagLocal': '本地摘要',
       'panel.recapTagProgress': '进度',
       'panel.recapFilterEmpty': '这个筛选下还没有记录',
       'panel.recapUnknownTurn': '更早的记录',
@@ -329,12 +337,18 @@ window.__ModuleLoader__.load({
       'panel.recapOrderAsc': '最早在前',
       'panel.recapGroupProgress': '进度 {count}',
       'panel.recapGroupSummary': '摘要 {count}',
+      'panel.recapGroupSpan': '{time} · 用时 {duration}',
       'panel.recapPending': '待跟进',
       'panel.recapFilterPending': '待跟进',
+      'panel.recapPendingCount': '{count} 轮',
+      'panel.recapPendingCountOne': '{count} 轮',
       'panel.recapPendingEmpty': '目前没有待跟进的轮次',
+      'panel.recapPendingRunning': '正在跑的这轮不标待跟进；已结束的轮次仍会保留',
+      'panel.recapPendingNoSummary': '语义摘要已关闭；待跟进标记来自摘要记录，打开摘要后才会出现',
       'panel.recapPendingHint': '这一轮结束时留下了问题或下一步',
       'progress.turn': '第 {turn} 轮',
       'progress.turnLabel': '轮次',
+      'progress.quietLabel': '未回复',
       'progress.elapsedLabel': '总耗时',
       'progress.stepsLabel': '步数',
       'progress.current': '现在',
@@ -354,6 +368,10 @@ window.__ModuleLoader__.load({
       'btw.modelLoading': '加载模型…',
       'btw.modelHint': '旁问使用的模型，不改变主会话',
       'btw.routeMissing': '旁问路由未加载；请重启 DSH 后再试。',
+      'btw.errorNetwork': '请求失败：{reason}',
+      'btw.errorRead': 'HTTP {status} · 读取响应失败',
+      'btw.errorEmptyResponse': 'HTTP {status} · 空响应',
+      'btw.errorNoAnswer': '模型没有返回可用的回答。',
       'prediction.accept': '按 Tab 填入预测',
       'form.unavailable': '配置暂不可用。',
       'form.readOnly': '当前部署只读。',
@@ -394,13 +412,13 @@ window.__ModuleLoader__.load({
       'settings.title': 'Show predicted messages',
       'settings.description': 'Predict what you might send next based on the conversation',
       'settings.turnLine': 'Line above the composer',
-      'settings.turnLine.note': 'This line is UI only and never enters the model context. Live progress and the activity stream are local; the semantic summary makes one cheap-model call.',
+      'settings.turnLine.note': 'This line is UI only and never enters the model context. Live progress and the activity stream are local; when semantic summaries are on, they make one cheap-model call per turn.',
       'settings.recap.title': 'Semantic summary',
-      'settings.recap.description': 'Every turn, one cheap-model line describing where things stand',
+      'settings.recap.description': 'Every turn, one cheap-model line describing where things stand; falls back to a local summary when the model fails',
       'settings.recapProgress.title': 'Live progress',
-      'settings.recapProgress.description': 'When a turn runs without output, record a progress entry every 10 minutes in Session review; it shares one filtered list with summaries',
+      'settings.recapProgress.description': 'When a turn runs long without replying to you, record a progress entry at the configured interval (default 10 minutes) in Session review; tool calls and reasoning do not count as a reply',
       'settings.recapStallSeconds.title': 'Progress interval (seconds)',
-      'settings.recapStallSeconds.description': 'How long without new output before the first progress entry, then one per interval; default 600 seconds = 10 minutes',
+      'settings.recapStallSeconds.description': 'How long a running turn goes without a reply before the first progress entry, then one per interval; default 600 seconds = 10 minutes',
       'settings.pendingTurns.title': 'Follow-up window (recent turns)',
       'settings.pendingTurns.description': 'Mark questions / next steps from this many recent turns as Follow up in Session review; default 3',
       'settings.recapActivity.title': 'Activity stream',
@@ -440,7 +458,7 @@ window.__ModuleLoader__.load({
       'turn.runningFor': 'Turn {turn} · {duration} elapsed',
       'turn.took': 'Turn {turn} · {duration}',
       'turn.waitingFor': 'waiting {duration}',
-      'turn.progressHint': 'One progress entry every 10 minutes in Session review',
+      'turn.progressHint': 'One progress entry every {duration} in Session review',
       'duration.seconds': '{s}s',
       'duration.minutes': '{m}m {s}s',
       'duration.minuteOnly': '{m}m',
@@ -464,15 +482,20 @@ window.__ModuleLoader__.load({
       'panel.guide': 'Review per-turn progress and recaps, and ask aside',
       'panel.refresh': 'Refresh',
       'section.recaps': 'Recaps',
-      'panel.recapEmpty': 'No summary or progress yet; one appears after the first turn, or when a turn runs without output for a long time',
+      'panel.recapEmpty': 'No summary or progress yet; one appears after the first turn, or when a turn runs long without replying',
+      'panel.recapEmptySummary': 'No summaries yet; one appears after a turn',
+      'panel.recapEmptyProgress': 'No progress yet; entries appear when a turn runs long without replying',
+      'panel.recapEmptyOff': 'Semantic summaries and live progress are both off; turn on either in the plugin settings to record',
       'panel.recapNoSession': 'Open a session first',
       'panel.recapError': 'Could not read recap history',
       'panel.recapRouteMissing': 'The recap history route is not loaded; restart DSH and try again',
+      'panel.recapRetry': 'Retry',
       'panel.recapCount': '{count} entries',
       'panel.recapClear': 'Clear',
       'panel.recapClearConfirm': 'Delete every summary and progress entry in this session?',
       'panel.recapClearYes': 'Clear all',
       'panel.recapClearNo': 'Cancel',
+      'panel.recapClearFailed': 'Could not clear; try again',
       'panel.recapRequest': 'Asked',
       'panel.recapReply': 'Replied',
       'panel.recapQuestion': 'Waiting on',
@@ -480,6 +503,7 @@ window.__ModuleLoader__.load({
       'panel.recapFilterSummary': 'Summaries',
       'panel.recapFilterProgress': 'Progress',
       'panel.recapTagSummary': 'Summary',
+      'panel.recapTagLocal': 'Local summary',
       'panel.recapTagProgress': 'Progress',
       'panel.recapFilterEmpty': 'No entries under this filter',
       'panel.recapUnknownTurn': 'Earlier entries',
@@ -487,12 +511,18 @@ window.__ModuleLoader__.load({
       'panel.recapOrderAsc': 'Oldest first',
       'panel.recapGroupProgress': 'Progress {count}',
       'panel.recapGroupSummary': 'Summaries {count}',
+      'panel.recapGroupSpan': '{time} · {duration}',
       'panel.recapPending': 'Follow up',
       'panel.recapFilterPending': 'Follow up',
+      'panel.recapPendingCount': '{count} turns',
+      'panel.recapPendingCountOne': '{count} turn',
       'panel.recapPendingEmpty': 'No turn needs a follow-up',
+      'panel.recapPendingRunning': 'The running turn is not marked; finished turns keep their markers',
+      'panel.recapPendingNoSummary': 'Semantic summaries are off; follow-ups come from summary entries, so none can be marked',
       'panel.recapPendingHint': 'This turn ended with a question or a next step',
       'progress.turn': 'Turn {turn}',
       'progress.turnLabel': 'Turn',
+      'progress.quietLabel': 'No reply yet',
       'progress.elapsedLabel': 'Elapsed',
       'progress.stepsLabel': 'Steps',
       'progress.current': 'Now',
@@ -512,6 +542,10 @@ window.__ModuleLoader__.load({
       'btw.modelLoading': 'Loading models…',
       'btw.modelHint': 'Model for this aside; it does not change the main session',
       'btw.routeMissing': 'The aside route is not loaded yet; restart DSH and try again.',
+      'btw.errorNetwork': 'Request failed: {reason}',
+      'btw.errorRead': 'HTTP {status} · could not read the response',
+      'btw.errorEmptyResponse': 'HTTP {status} · empty response',
+      'btw.errorNoAnswer': 'The model returned no usable answer.',
       'prediction.accept': 'Press Tab to insert the prediction',
       'form.unavailable': 'Configuration is unavailable.',
       'form.readOnly': 'This deployment stores settings read-only.',
@@ -596,7 +630,7 @@ window.__ModuleLoader__.load({
      * 一次旁问 RPC。
      * 返回 { items } / { unavailable } / { disabled }；网络或服务失败返回 { error }。
      */
-    async function requestBtw(sessionId, question, selection, signal) {
+    async function requestBtw(sessionId, question, selection, signal, t) {
       var payload = { sessionId: sessionId, question: question }
       if (selection && typeof selection.provider === 'string' && typeof selection.model === 'string') {
         payload.provider = selection.provider
@@ -614,23 +648,25 @@ window.__ModuleLoader__.load({
       } catch (error) {
         if (error && error.name === 'AbortError') throw error
         var reason = String((error && error.message) || error)
-        return { error: true, message: '请求失败：' + reason }
+        return { error: true, message: trf(t, 'btw.errorNetwork', { reason: reason }, '请求失败：' + reason) }
       }
       if (response.status === 404) {
-        return { error: true, code: 'route-missing', message: '旁问路由未加载；请重启 DSH 后再试。' }
+        return { error: true, code: 'route-missing', message: tr(t, 'btw.routeMissing', '旁问路由未加载；请重启 DSH 后再试。') }
       }
       var text = ''
       try {
         text = await response.text()
       } catch (error) {
-        return { error: true, message: 'HTTP ' + response.status + ' · 读取响应失败' }
+        return { error: true, message: trf(t, 'btw.errorRead', { status: response.status }, 'HTTP ' + response.status + ' · 读取响应失败') }
       }
       var body = null
       try {
         body = text === '' ? null : JSON.parse(text)
       } catch (error) {
         var snippet = text.replace(/\s+/g, ' ').slice(0, 140)
-        return { error: true, message: 'HTTP ' + response.status + ' · ' + (snippet || '空响应') }
+        return { error: true, message: snippet === ''
+          ? trf(t, 'btw.errorEmptyResponse', { status: response.status }, 'HTTP ' + response.status + ' · 空响应')
+          : 'HTTP ' + response.status + ' · ' + snippet }
       }
       if (!body || body.ok !== true) {
         var failure = body && body.error ? body.error : {}
@@ -638,7 +674,7 @@ window.__ModuleLoader__.load({
         return { error: true, message: detail }
       }
       var answer = body.data && body.data.answer
-      if (typeof answer !== 'string' || answer === '') return { error: true, message: '模型没有返回可用的回答。' }
+      if (typeof answer !== 'string' || answer === '') return { error: true, message: tr(t, 'btw.errorNoAnswer', '模型没有返回可用的回答。') }
       return { answer: answer }
     }
 
@@ -1071,6 +1107,21 @@ window.__ModuleLoader__.load({
       return text
     }
 
+    /**
+     * 消息里有没有「给用户看的正文」。reasoning 和 tool-call 不算：
+     * 它们只出现在过程里，用户并没有因此收到一句回复。
+     */
+    function hasReplyText(message) {
+      var content = message && message.content
+      if (!Array.isArray(content)) return false
+      for (var index = 0; index < content.length; index += 1) {
+        var block = content[index]
+        if (!block || block.type !== 'text') continue
+        if (typeof block.text === 'string' && block.text.trim() !== '') return true
+      }
+      return false
+    }
+
     function cleanReasoning(text) {
       var value = String(text || '')
       if (value.charAt(0) === '<') {
@@ -1127,7 +1178,12 @@ window.__ModuleLoader__.load({
      * @param {Array<object>} entries - `binding.eventSource.getSnapshot().entries`
      * @param {number} now - 当前时间，用来在运行中累计耗时
      * @param {{ running?: boolean }} [options]
-     * @returns {{ turn: number, running: boolean, startedAt: number, elapsedMs: number, lastEventAt: number, silenceMs: number, endedAt: number, endReason: object|null, status: string, steps: number, actions: Array<object>, tool: object|null, reasoning: string, phase: string }}
+     * @returns {{ turn: number, running: boolean, startedAt: number, elapsedMs: number, lastEventAt: number, silenceMs: number, lastReplyAt: number, quietMs: number, endedAt: number, endReason: object|null, status: string, steps: number, actions: Array<object>, tool: object|null, reasoning: string, phase: string }}
+     *
+     * 两个「静默」不是一回事：
+     * - `silenceMs`：距最后一个事件多久，用来判断真的卡住了（无新输出）；
+     * - `quietMs`：距最后一次给用户的正文回复多久，用来判断「跑很久了还没回话」。
+     *   工具调用、思考、步骤事件都会刷新 `silenceMs`，但不会刷新 `quietMs`。
      */
     function deriveTurnView(entries, now, options) {
       var list = Array.isArray(entries) ? entries : []
@@ -1152,7 +1208,7 @@ window.__ModuleLoader__.load({
           }
         }
         if (anchor === -1) {
-          return { turn: 0, running: false, startedAt: 0, elapsedMs: 0, lastEventAt: 0, silenceMs: 0, endedAt: 0, endReason: null, status: 'idle', steps: 0, actions: [], tool: null, reasoning: '', phase: 'idle' }
+          return { turn: 0, running: false, startedAt: 0, elapsedMs: 0, lastEventAt: 0, silenceMs: 0, lastReplyAt: 0, quietMs: 0, endedAt: 0, endReason: null, status: 'idle', steps: 0, actions: [], tool: null, reasoning: '', phase: 'idle' }
         }
         while (anchor > 0 && eventTurn(eventOf(list[anchor - 1])) === turn) anchor -= 1
       }
@@ -1160,6 +1216,7 @@ window.__ModuleLoader__.load({
       var first = eventOf(list[anchor]) || {}
       var startedAt = typeof first.time === 'number' ? first.time : (typeof now === 'number' ? now : Date.now())
       var lastTime = startedAt
+      var lastReplyAt = startedAt
       var endedAt = 0
       var endReason = null
       var steps = 0
@@ -1207,6 +1264,7 @@ window.__ModuleLoader__.load({
             reasoning += String(chunk.text || '')
             phase = 'reasoning'
           } else if (chunk.type === 'text-delta') {
+            if (typeof chunk.text === 'string' && chunk.text.trim() !== '' && typeof event.time === 'number') lastReplyAt = event.time
             phase = 'answering'
           } else if (chunk.type === 'tool-call-delta') {
             phase = 'tool'
@@ -1219,8 +1277,10 @@ window.__ModuleLoader__.load({
             }
           }
         } else if (event.type === 'assistant/message') {
-          var contentReasoning = reasoningFromContent(objectOf(data.message).content)
+          var assistantMessage = objectOf(data.message)
+          var contentReasoning = reasoningFromContent(assistantMessage.content)
           if (contentReasoning !== '') reasoning = contentReasoning
+          if (hasReplyText(assistantMessage) && typeof event.time === 'number') lastReplyAt = event.time
           phase = 'answering'
         } else if (event.type === 'turn/end') {
           endedAt = lastTime
@@ -1234,6 +1294,7 @@ window.__ModuleLoader__.load({
       var nowMs = typeof now === 'number' ? now : Date.now()
       var elapsedMs = Math.max(0, (endedAt > 0 ? endedAt : nowMs) - startedAt)
       var silenceMs = running ? Math.max(0, nowMs - lastTime) : 0
+      var quietMs = running ? Math.max(0, nowMs - lastReplyAt) : 0
       var status = running ? 'running' : (endReason === null ? 'interrupted' : turnStatusOfReason(endReason))
 
       return {
@@ -1243,6 +1304,8 @@ window.__ModuleLoader__.load({
         elapsedMs: elapsedMs,
         lastEventAt: lastTime,
         silenceMs: silenceMs,
+        lastReplyAt: lastReplyAt,
+        quietMs: quietMs,
         endedAt: endedAt,
         endReason: endReason,
         status: status,
@@ -1340,18 +1403,19 @@ window.__ModuleLoader__.load({
       var segments = []
       if (!view || view.turn === 0) return segments
       var progress = settings.progress === true
-      var stalled = view.running && progress && typeof view.silenceMs === 'number' && view.silenceMs >= settings.stallMs
-      var keepActivity = stalled || pinned === true
+      // 判定只看「多久没给用户正文回复」：一直跑工具、一直思考也算没回复。
+      var due = view.running && progress && typeof view.quietMs === 'number' && view.quietMs >= settings.stallMs
+      var keepActivity = due || pinned === true
       if (progress) {
         var duration = formatDuration(view.elapsedMs, t)
         var text = view.running
           ? trf(t, 'turn.runningFor', { turn: view.turn, duration: duration }, '第 ' + view.turn + ' 轮 · 已进行 ' + duration)
           : trf(t, 'turn.took', { turn: view.turn, duration: duration }, '第 ' + view.turn + ' 轮 · 用时 ' + duration)
-        if (stalled) {
-          var waitingMs = Math.floor(view.silenceMs / settings.stallMs) * settings.stallMs
+        if (due) {
+          var waitingMs = Math.floor(view.quietMs / settings.stallMs) * settings.stallMs
           text += RECAP_SEP + trf(t, 'turn.waitingFor', { duration: formatDuration(waitingMs, t) }, '等待 ' + formatDuration(waitingMs, t))
         }
-        segments.push({ key: 'progress', text: text, className: stalled ? 'wdxt-progress wdxt-progressStalled' : 'wdxt-progress' })
+        segments.push({ key: 'progress', text: text, className: due ? 'wdxt-progress wdxt-progressStalled' : 'wdxt-progress' })
       }
       var activityShown = false
       if (settings.activity || keepActivity) {
@@ -1387,18 +1451,19 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * 运行中的进度快照：每 `stallMs` 无新输出记一条，摘要和内容都保持短。
+     * 运行中的进度快照：每 `stallMs` 没给用户回复记一条，摘要和内容都保持短。
      * 纯函数，方便测试；写历史由调用方发一次 RPC。
      */
     function progressEntryOf(view, settings, t) {
-      var bucket = Math.max(1, Math.floor(view.silenceMs / settings.stallMs))
+      var bucket = Math.max(1, Math.floor(view.quietMs / settings.stallMs))
       var waiting = formatDuration(bucket * settings.stallMs, t)
       var activity = activityText(view, t)
       var subject = activity !== '' ? activity : tr(t, 'turn.thinking', '思考中…')
       return {
         turn: view.turn,
         bucket: bucket,
-        anchor: typeof view.lastEventAt === 'number' ? view.lastEventAt : 0,
+        // 锚点跟着「上一次回复」走：同一次等待、同一个档位只记一条。
+        anchor: typeof view.lastReplyAt === 'number' ? view.lastReplyAt : 0,
         status: 'stalled',
         summary: trf(t, 'progress.entry', { turn: view.turn, activity: subject, duration: waiting }, '第 ' + view.turn + ' 轮 · ' + subject + ' · 等待 ' + waiting),
         activity: activity,
@@ -1456,7 +1521,7 @@ window.__ModuleLoader__.load({
       var [tick, setTick] = useState(0)
       var [summary, setSummary] = useState(null)
       var [dismissedTurn, setDismissedTurn] = useState(0)
-      var [stalledTurn, setStalledTurn] = useState(0)
+      var [waitedTurn, setWaitedTurn] = useState(0)
       var requested = useRef('')
       var activeSession = useRef('')
       var reportedBuckets = useRef({})
@@ -1466,7 +1531,7 @@ window.__ModuleLoader__.load({
         setEntries([])
         setSummary(null)
         setDismissedTurn(0)
-        setStalledTurn(0)
+        setWaitedTurn(0)
         requested.current = ''
         activeSession.current = ''
         reportedBuckets.current = {}
@@ -1515,25 +1580,27 @@ window.__ModuleLoader__.load({
         return function () { clearInterval(timer) }
       }, [view.running, view.turn])
 
-      // 静默超过阈值后把这一行「钉住」：新事件恢复也不闪走，直到本轮结束。
+      // 两种情况分开：`stalled` 只表示「没有任何事件」（真卡住）；`due` 表示
+      // 「跑够久了还没给用户正文回复」，即使工具一直在动也算。
       var stalled = Boolean(view.running && cfg.progress && view.silenceMs >= cfg.stallMs)
+      var due = Boolean(view.running && cfg.progress && view.quietMs >= cfg.stallMs)
       useEffect(function () {
-        if (!stalled) return
-        setStalledTurn(function (current) { return current === view.turn ? current : view.turn })
-      }, [stalled, view.turn])
-      var stickyStall = stalled || (view.running && stalledTurn === view.turn)
+        if (!due) return
+        setWaitedTurn(function (current) { return current === view.turn ? current : view.turn })
+      }, [due, view.turn])
+      var stickyProgress = due || (view.running && waitedTurn === view.turn)
 
-      // 长时间没有新输出时，每 10 分钟往「会话回顾」记一条进度；同一轮同一档只发一次。
-      var progressBucket = view.running && cfg.progress ? Math.floor(view.silenceMs / cfg.stallMs) : 0
+      // 超过一个间隔还没回复，就往「会话回顾」记一条进度；同一轮同一次等待同一档只发一次。
+      var progressBucket = view.running && cfg.progress ? Math.floor(view.quietMs / cfg.stallMs) : 0
       useEffect(function () {
         if (progressBucket < 1 || !sessionId || view.turn === 0) return
-        var key = view.turn + ':' + view.lastEventAt + ':' + progressBucket
+        var key = view.turn + ':' + view.lastReplyAt + ':' + progressBucket
         if (reportedBuckets.current[key] === true) return
         reportedBuckets.current[key] = true
         requestProgress(sessionId, progressEntryOf(view, cfg, t)).catch(function () {
-          // 失败不重试；下一条（下一个 10 分钟）继续。
+          // 失败不重试；下一个间隔继续。
         })
-      }, [progressBucket, sessionId, view.turn])
+      }, [progressBucket, sessionId, view.turn, view.lastReplyAt])
 
       // 轮次结束后去 Host 要一次语义摘要。Host 侧按 minTurns / cooldown /
       // similarity 决定是否真的调用模型；这里只按轮次去重。
@@ -1548,14 +1615,20 @@ window.__ModuleLoader__.load({
         var key = sessionId + ':' + view.turn
         if (requested.current === key) return undefined
         requested.current = key
-        var controller = new AbortController()
-        requestRecap(sessionId, controller.signal).then(function (recap) {
+        // 不在下一轮开始时 abort：上一轮的摘要还在 Host 侧生成，取消会让
+        // 它既不出现在这一行，也永远进不了「会话回顾」，上一轮就丢了记录。
+        requestRecap(sessionId).then(function (recap) {
+          if (activeSession.current !== sessionId) return
           var text = formatRecap(recap, t)
-          if (text !== '') setSummary({ text: text, turn: view.turn })
+          if (text === '') return
+          // 上一轮的请求可能比新一轮晚回来；不要让旧摘要覆盖已经拿到的新摘要。
+          setSummary(function (previous) {
+            if (previous !== null && typeof previous.turn === 'number' && previous.turn > view.turn) return previous
+            return { text: text, turn: view.turn }
+          })
         }).catch(function () {
           // 摘要失败时静默：本地三种信息仍然可用，不打扰主任务。
         })
-        return function () { controller.abort() }
       }, [cfg.summary, sessionId, running, view.turn])
 
       if (!sessionId) return null
@@ -1563,17 +1636,19 @@ window.__ModuleLoader__.load({
 
       // 运行中先展示本地活动；语义摘要只在上一条轮次结束后出现，避免把旧摘要说成这一轮。
       var visibleSummary = summary !== null && summary.turn === view.turn && !running ? summary : null
-      var segments = buildTurnSegments(view, cfg, t, visibleSummary, stickyStall)
+      var segments = buildTurnSegments(view, cfg, t, visibleSummary, stickyProgress)
       // 可见性可以「钉住」，状态永远用实时静默判断，避免恢复输出后还显示无新输出。
       var status = cfg.progress ? turnStatusInfo(view, t, stalled) : null
-      var showRunning = view.running && (cfg.activity || (cfg.progress && stickyStall))
+      var showRunning = view.running && (cfg.activity || (cfg.progress && stickyProgress))
       // 完成态只在三种情况下出现：有摘要、用户开了活动流水、或这一轮曾经无新输出。
       // 普通轮次结束后不常驻一条「已完成」，否则又变回噪音。
-      var showCompleted = !view.running && ((cfg.summary && visibleSummary !== null) || cfg.activity || (cfg.progress && stalledTurn === view.turn))
+      var showCompleted = !view.running && ((cfg.summary && visibleSummary !== null) || cfg.activity || (cfg.progress && waitedTurn === view.turn))
       if (view.turn === 0 || (!showRunning && !showCompleted)) return null
       if ((segments.length === 0 && status === null) || dismissedTurn === view.turn) return null
 
       var fullTitle = (status === null ? [] : [status.label]).concat(segments.map(function (segment) { return segment.text })).join(RECAP_SEP)
+      var progressInterval = formatDuration(cfg.stallMs, t)
+      var progressHint = trf(t, 'turn.progressHint', { duration: progressInterval }, '每 ' + progressInterval + ' 在「会话回顾」记一条进度')
       var children = [h(PluginStyles, { key: 'style', scope: 'turn-line' })]
       if (status !== null) children.push(h(StatusChip, { key: 'status', kind: status.kind, label: status.label, live: true, t: t }))
       for (var index = 0; index < segments.length; index += 1) {
@@ -1581,7 +1656,7 @@ window.__ModuleLoader__.load({
         children.push(h('span', {
           key: segments[index].key,
           className: 'wdxt-seg ' + segments[index].className,
-          title: segments[index].key === 'progress' ? tr(t, 'turn.progressHint', '每 10 分钟在「会话回顾」记一条进度') : undefined,
+          title: segments[index].key === 'progress' ? progressHint : undefined,
         }, segments[index].text))
       }
       if (typeof openProgress === 'function') {
@@ -1779,7 +1854,21 @@ window.__ModuleLoader__.load({
       if (last === '') return ''
       var span = group.lastAt - group.firstAt
       if (!(span > 0)) return last
-      return last + ' · ' + formatDuration(span, t)
+      return trf(t, 'panel.recapGroupSpan', { time: last, duration: formatDuration(span, t) }, last + ' · 用时 ' + formatDuration(span, t))
+    }
+
+    /** 空列表提示只承诺当前开关真的会产出什么，避免关掉功能后还提示「聊一轮就会出现」。 */
+    function recapEmptyText(summaryEnabled, progressEnabled, t) {
+      if (!summaryEnabled && !progressEnabled) return tr(t, 'panel.recapEmptyOff', '语义摘要和实时进度都已关闭；在插件设置里打开一个后才会记录')
+      if (summaryEnabled && !progressEnabled) return tr(t, 'panel.recapEmptySummary', '还没有摘要；聊过一轮后会出现')
+      if (!summaryEnabled && progressEnabled) return tr(t, 'panel.recapEmptyProgress', '还没有进度记录；一轮跑久了还没给你回复时会出现')
+      return tr(t, 'panel.recapEmpty', '还没有生成过摘要或进度记录；聊过一轮，或一轮跑久了还没回复时就会出现')
+    }
+
+    /** 「待跟进」筛选按轮次计数，和按条计数的摘要 / 进度分开标注单位。 */
+    function pendingCountLabel(count, t) {
+      if (count === 1) return trf(t, 'panel.recapPendingCountOne', { count: count }, count + ' 轮')
+      return trf(t, 'panel.recapPendingCount', { count: count }, count + ' 轮')
     }
 
     function latestRecordedTurn(entries) {
@@ -1837,6 +1926,8 @@ window.__ModuleLoader__.load({
       var initialFilterRevision = props.initialFilterRevision
       var initialOrder = props.initialOrder
       var running = props.running === true
+      var summaryEnabled = props.summaryEnabled !== false
+      var progressEnabled = props.progressEnabled !== false
       var currentTurn = typeof props.currentTurn === 'number' ? props.currentTurn : 0
       var configuredPendingTurns = Number(props.pendingTurns)
       var pendingTurns = Number.isFinite(configuredPendingTurns) ? Math.max(1, Math.min(20, Math.round(configuredPendingTurns))) : 3
@@ -1845,6 +1936,7 @@ window.__ModuleLoader__.load({
       var [order, setOrder] = useState(initialOrder === 'asc' ? 'asc' : 'desc')
       var [openKey, setOpenKey] = useState(null)
       var [confirmClear, setConfirmClear] = useState(false)
+      var [clearError, setClearError] = useState(false)
       var [openTurn, setOpenTurn] = useState(undefined)
       var controllerRef = useRef(null)
       var pendingRef = useRef(false)
@@ -1882,12 +1974,17 @@ window.__ModuleLoader__.load({
         var controller = new AbortController()
         controllerRef.current = controller
         requestRecapHistory(sessionId, controller.signal, true).then(function (result) {
-          if (controller.signal.aborted || result.error) return
+          if (controller.signal.aborted) return
+          if (result.error) {
+            setClearError(true)
+            return
+          }
           setOpenKey(null)
           setConfirmClear(false)
+          setClearError(false)
           setState({ status: 'empty', items: [] })
         }).catch(function () {
-          // 清空失败保持原列表。
+          if (!controller.signal.aborted) setClearError(true)
         })
       }
 
@@ -1907,10 +2004,20 @@ window.__ModuleLoader__.load({
         }
       }, [initialFilter, initialFilterRevision])
 
+      // 轮次结束时刷新一次：上一轮的摘要可能刚写入历史，30 秒轮询太慢。
+      // 摘要生成有模型延迟，3 秒后再补一次，尽量不让「主对话有、面板没有」停留在界面上。
+      useEffect(function () {
+        if (!sessionId || running) return undefined
+        load(true)
+        var timer = setTimeout(function () { load(true) }, 3000)
+        return function () { clearTimeout(timer) }
+      }, [running, sessionId])
+
       useEffect(function () {
         setOpenTurn(undefined)
         setOpenKey(null)
         setConfirmClear(false)
+        setClearError(false)
       }, [sessionId])
 
       var items = state.items
@@ -1923,8 +2030,9 @@ window.__ModuleLoader__.load({
       }
 
       function groupPending(group) {
-        if (running) return false
         if (currentTurn === 0 || typeof group.turn !== 'number') return false
+        // 正在跑的这一轮还没结束，不标；已经结束的上一轮即使会话在跑也保留标记。
+        if (running && group.turn >= currentTurn) return false
         if (group.turn < currentTurn - pendingTurns + 1 || group.turn > currentTurn) return false
         for (var pendingIndex = 0; pendingIndex < group.entries.length; pendingIndex += 1) {
           var entry = group.entries[pendingIndex]
@@ -2002,6 +2110,7 @@ window.__ModuleLoader__.load({
         setFilter(id)
         setOpenKey(null)
         setConfirmClear(false)
+        setClearError(false)
         setOpenTurn(undefined)
         if (typeof props.onFilterChange === 'function') props.onFilterChange(id)
       }
@@ -2011,7 +2120,7 @@ window.__ModuleLoader__.load({
         if (typeof props.onOrderChange === 'function') props.onOrderChange(id)
       }
 
-      function pill(id, label, active, onClick, countValue) {
+      function pill(id, label, active, onClick, countValue, countText) {
         return h('button', {
           key: id,
           type: 'button',
@@ -2021,7 +2130,7 @@ window.__ModuleLoader__.load({
         }, [
           h('span', { key: 'label' }, label),
           typeof countValue === 'number' && countValue > 0
-            ? h('span', { key: 'count', className: 'wdxp-filterCount' }, String(countValue))
+            ? h('span', { key: 'count', className: 'wdxp-filterCount' }, countText !== undefined ? countText : String(countValue))
             : null,
         ])
       }
@@ -2043,7 +2152,7 @@ window.__ModuleLoader__.load({
             elapsed,
           ]),
           h('p', { key: 'silence', className: 'wdxh-line' }, [
-            h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'turn.status.stalled', '无新输出')),
+            h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'progress.quietLabel', '未回复')),
             silence,
           ]),
           typeof item.steps === 'number' && item.steps > 0 ? h('p', { key: 'steps', className: 'wdxh-line' }, [
@@ -2089,7 +2198,9 @@ window.__ModuleLoader__.load({
           }, [
             h('span', { key: 'kind', className: 'wdxh-kind' }, isProgress
               ? tr(t, 'panel.recapTagProgress', '进度')
-              : tr(t, 'panel.recapTagSummary', '摘要')),
+              : (item.degraded === true
+                  ? tr(t, 'panel.recapTagLocal', '本地摘要')
+                  : tr(t, 'panel.recapTagSummary', '摘要'))),
             h('span', { key: 'text', className: 'wdxp-rowText' }, item.summary),
             h('span', { key: 'time', className: 'wdxp-rowMeta' }, formatRecapTime(item.at)),
           ]),
@@ -2142,18 +2253,32 @@ window.__ModuleLoader__.load({
           h('div', { key: 'b', className: 'wdxp-skeletonRow' }),
         ])
       } else if (state.status === 'error') {
-        body = h('p', { key: 'error', className: 'wdxp-note' },
+        body = h('div', { key: 'error', className: 'wdxp-rows' }, [
+          h('p', { key: 'message', className: 'wdxp-note' },
+            state.code === 'route-missing'
+              ? tr(t, 'panel.recapRouteMissing', '回顾历史路由没加载；重启 DSH 后再试')
+              : tr(t, 'panel.recapError', '回顾历史读取失败')),
           state.code === 'route-missing'
-            ? tr(t, 'panel.recapRouteMissing', '回顾历史路由没加载；重启 DSH 后再试')
-            : tr(t, 'panel.recapError', '回顾历史读取失败'))
+            ? null
+            : h('button', {
+                key: 'retry',
+                type: 'button',
+                className: 'wdxp-link',
+                onClick: function () { load(false) },
+              }, tr(t, 'panel.recapRetry', '重试')),
+        ])
       } else if (state.status === 'empty') {
         body = h('p', { key: 'empty', className: 'wdxp-note' }, sessionId
-          ? tr(t, 'panel.recapEmpty', '还没有生成过摘要或进度记录；聊过一轮，或运行中长时间没有新输出时就会出现')
+          ? recapEmptyText(summaryEnabled, progressEnabled, t)
           : tr(t, 'panel.recapNoSession', '先打开一个会话'))
       } else {
         var list = visibleGroups.length === 0
           ? h('p', { key: 'filterEmpty', className: 'wdxp-note' }, filter === 'pending'
-              ? tr(t, 'panel.recapPendingEmpty', '目前没有待跟进的轮次')
+              ? (!summaryEnabled
+                  ? tr(t, 'panel.recapPendingNoSummary', '语义摘要已关闭；待跟进标记来自摘要记录，打开摘要后才会出现')
+                  : (running
+                      ? tr(t, 'panel.recapPendingRunning', '正在跑的这轮不标待跟进；已结束的轮次仍会保留')
+                      : tr(t, 'panel.recapPendingEmpty', '目前没有待跟进的轮次')))
               : tr(t, 'panel.recapFilterEmpty', '这个筛选下还没有记录'))
           : h('ul', { key: 'groups', className: 'wdxp-groups' }, visibleGroups.map(groupBlock))
         body = h('div', { key: 'rows', className: 'wdxp-rows' }, [
@@ -2164,7 +2289,7 @@ window.__ModuleLoader__.load({
               pill('all', tr(t, 'panel.recapFilterAll', '全部'), filter === 'all', function () { chooseFilter('all') }, items.length),
               pill('summary', tr(t, 'panel.recapFilterSummary', '摘要'), filter === 'summary', function () { chooseFilter('summary') }, summaryCount),
               pill('progress', tr(t, 'panel.recapFilterProgress', '进度'), filter === 'progress', function () { chooseFilter('progress') }, progressCount),
-              pill('pending', tr(t, 'panel.recapFilterPending', '待跟进'), filter === 'pending', function () { chooseFilter('pending') }, pendingCount),
+              pill('pending', tr(t, 'panel.recapFilterPending', '待跟进'), filter === 'pending', function () { chooseFilter('pending') }, pendingCount, pendingCountLabel(pendingCount, t)),
             ]),
             h('div', { key: 'order', className: 'wdxp-filters' }, [
               pill('desc', tr(t, 'panel.recapOrderDesc', '最新在前'), order === 'desc', function () { chooseOrder('desc') }),
@@ -2180,14 +2305,20 @@ window.__ModuleLoader__.load({
               key: 'clear',
               type: 'button',
               className: 'wdxp-link',
-              onClick: function () { setConfirmClear(true) },
+              onClick: function () {
+                setClearError(false)
+                setConfirmClear(true)
+              },
             }, tr(t, 'panel.recapClear', '清空')),
           ]),
           confirmClear
             ? h('div', { key: 'confirm', className: 'wdxp-confirm' }, [
                 h('span', { key: 'text', className: 'wdxp-confirmText' }, tr(t, 'panel.recapClearConfirm', '删除当前会话的全部摘要和进度记录？')),
+                clearError
+                  ? h('span', { key: 'error', className: 'wdxp-confirmText wdxp-danger' }, tr(t, 'panel.recapClearFailed', '清空失败，请重试'))
+                  : null,
                 h('button', { key: 'yes', type: 'button', className: 'wdxp-link wdxp-danger', onClick: clearAll }, tr(t, 'panel.recapClearYes', '确认清空')),
-                h('button', { key: 'no', type: 'button', className: 'wdxp-link', onClick: function () { setConfirmClear(false) } }, tr(t, 'panel.recapClearNo', '取消')),
+                h('button', { key: 'no', type: 'button', className: 'wdxp-link', onClick: function () { setConfirmClear(false); setClearError(false) } }, tr(t, 'panel.recapClearNo', '取消')),
               ])
             : null,
           list,
@@ -2283,7 +2414,7 @@ window.__ModuleLoader__.load({
         if (controllerRef.current) controllerRef.current.abort()
         var controller = new AbortController()
         controllerRef.current = controller
-        requestBtw(sessionId, question, override, controller.signal).then(function (result) {
+        requestBtw(sessionId, question, override, controller.signal, t).then(function (result) {
           if (controller.signal.aborted) return
           askingRef.current = false
           setAsking(false)
@@ -2310,7 +2441,7 @@ window.__ModuleLoader__.load({
         setItems(function (prev) {
           return prev.map(function (item) {
             return item.status === 'loading'
-              ? { ...item, status: 'error', error: tr(t, 'btw.cancelled', '已取消') }
+              ? { ...item, status: 'cancelled', error: tr(t, 'btw.cancelled', '已取消') }
               : item
           })
         })
@@ -2422,6 +2553,8 @@ window.__ModuleLoader__.load({
             var body
             if (item.status === 'loading') {
               body = h('div', { key: 'body', className: 'wdxa-loading' }, tr(t, 'btw.asking', '回答中…'))
+            } else if (item.status === 'cancelled') {
+              body = h('div', { key: 'body', className: 'wdxa-note' }, item.error || tr(t, 'btw.cancelled', '已取消'))
             } else if (item.status === 'error') {
               body = h('div', { key: 'body', className: 'wdxa-error' }, item.error || tr(t, 'btw.error', '旁问失败'))
             } else {
@@ -2459,6 +2592,8 @@ window.__ModuleLoader__.load({
       var requestedFilter = props.requestedFilter
       var configuredTab = props.defaultTab
       var sessionRunning = props.running === true
+      var summaryEnabled = props.summaryEnabled !== false
+      var progressEnabled = props.progressEnabled !== false
       var configuredPendingTurns = Number(props.pendingTurns)
       var pendingTurns = Number.isFinite(configuredPendingTurns) ? Math.max(1, Math.min(20, Math.round(configuredPendingTurns))) : 3
       var initialTab = configuredTab === 'btw' ? 'btw' : 'recaps'
@@ -2523,6 +2658,8 @@ window.__ModuleLoader__.load({
           initialFilterRevision: recapFilterRevision,
           initialOrder: recapOrder,
           running: sessionRunning,
+          summaryEnabled: summaryEnabled,
+          progressEnabled: progressEnabled,
           pendingTurns: pendingTurns,
           currentTurn: currentTurn,
           onFilterChange: setRecapFilter,
@@ -3266,10 +3403,13 @@ window.__ModuleLoader__.load({
             : undefined
           var configuredTurns = settings && settings.value ? Number(settings.value.pendingTurns) : 3
           var pendingTurns = Number.isFinite(configuredTurns) ? Math.max(1, Math.min(20, Math.round(configuredTurns))) : 3
+          var settingsValue = settings && settings.value ? settings.value : {}
           return h(ReliefPanel, {
             sessionId: props && props.sessionId,
             t: props && props.t,
             running: running,
+            summaryEnabled: settingsValue.recap !== false,
+            progressEnabled: settingsValue.recapProgress !== false,
             modelDirectories: ctx.modelDirectories,
             defaultTab: props && props.defaultTab,
             readFeed: props && props.readFeed,

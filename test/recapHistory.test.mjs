@@ -108,6 +108,31 @@ test('progress entries in a later silence episode are kept', () => {
   assert.deepEqual(history.list('s1').map((item) => item.anchor).sort(), [1000, 5000])
 })
 
+test('list returns every stored entry for a session, not a hidden 80-entry slice', () => {
+  const { history } = store()
+  for (let turn = 1; turn <= 90; turn += 1) {
+    assert.equal(history.append({ sessionId: 's1', seq: turn, turn, summary: `第 ${turn} 条` }), true)
+  }
+  assert.equal(history.list('s1').length, 90)
+  assert.equal(history.list('s1')[0].turn, 90)
+})
+
+test('a local fallback summary is stored and replaced by a later real summary', () => {
+  const { history } = store()
+  assert.equal(history.append({ sessionId: 's1', seq: 1, turn: 1, kind: 'waiting', summary: '本地兜底', degraded: true }), true)
+  assert.equal(history.list('s1').length, 1)
+  assert.equal(history.list('s1')[0].degraded, true)
+
+  // 模型恢复后，同轮的真摘要替换本地兜底，而不是被「每轮一条」规则挡住。
+  assert.equal(history.append({ sessionId: 's1', seq: 2, turn: 1, kind: 'answered', summary: '模型摘要', degraded: false }), true)
+  assert.equal(history.list('s1').length, 1)
+  assert.equal(history.list('s1')[0].summary, '模型摘要')
+  assert.equal(history.list('s1')[0].degraded, false)
+
+  // 真摘要已经有了一条，后面的兜底不能反过来覆盖它。
+  assert.equal(history.append({ sessionId: 's1', seq: 3, turn: 1, summary: '再一次兜底', degraded: true }), false)
+})
+
 test('history keeps at most one summary per turn, even when the text repeats', () => {
   const { history } = store()
   assert.equal(history.append({ sessionId: 's1', seq: 1, turn: 1, summary: '同一行' }), true)

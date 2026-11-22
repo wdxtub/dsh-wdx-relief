@@ -4,7 +4,8 @@
  *
  * 约束：
  * - 只存本地 JSON（$DSH_HOME/wdx-relief/recaps.json），不写会话、不外发；
- * - 摘要按 (sessionId, seq) 去重；进度按 (sessionId, turn, bucket) 去重，
+ * - 摘要按 (sessionId, turn / seq) 去重；同一轮的本地兜底可被之后模型恢复
+ *   生成的真摘要替换。进度按 (sessionId, turn, anchor, bucket) 去重，
  *   页面刷新或重复请求都不会刷屏；
  * - 最多保留 maxEntries 条，超出丢最旧的。
  */
@@ -89,7 +90,23 @@ export function createRecapHistory({ file, maxEntries = MAX_ENTRIES, log = () =>
       const turn = positiveInteger(entry.turn)
       if (turn > 0) {
         // 每组轮次只留一条摘要；文字沿用上一轮时也保留当轮这一条。
-        if (list.some((item) => item.kind !== 'progress' && item.sessionId === entry.sessionId && item.turn === turn)) return false
+        const existing = list.find((item) => item.kind !== 'progress' && item.sessionId === entry.sessionId && item.turn === turn)
+        if (existing !== undefined) {
+          // 模型失败时的本地兜底已经显示在输入框上方；之后模型恢复并给出同轮摘要时，
+          // 用真摘要替换它，而不是让低质量的本地拼接占住这一轮。
+          if (existing.degraded === true && entry.degraded !== true) {
+            existing.kind = entry.kind ?? existing.kind
+            existing.at = typeof entry.at === 'number' ? entry.at : Date.now()
+            existing.summary = typeof entry.summary === 'string' ? entry.summary : existing.summary
+            existing.user = typeof entry.user === 'string' ? entry.user : existing.user
+            existing.assistant = typeof entry.assistant === 'string' ? entry.assistant : existing.assistant
+            existing.question = typeof entry.question === 'string' ? entry.question : existing.question
+            existing.degraded = false
+            save()
+            return true
+          }
+          return false
+        }
       } else {
         if (list.some((item) => item.sessionId === entry.sessionId && item.kind !== 'progress' && item.seq === entry.seq)) return false
         // 旧记录没有 turn：重启后同一轮可能重新生成一次，摘要没变就不再记一条。
@@ -112,14 +129,15 @@ export function createRecapHistory({ file, maxEntries = MAX_ENTRIES, log = () =>
         user: typeof entry.user === 'string' ? entry.user : '',
         assistant: typeof entry.assistant === 'string' ? entry.assistant : '',
         question: typeof entry.question === 'string' ? entry.question : '',
+        degraded: entry.degraded === true,
       })
       while (list.length > maxEntries) list.shift()
       save()
       return true
     },
 
-    /** 最新的在前。 */
-    list(sessionId, limit = 80) {
+    /** 最新的在前；默认返回这个会话保存的全部条目，避免面板「共 N 条」与实际只显示最近 80 条不一致。 */
+    list(sessionId, limit = maxEntries) {
       if (typeof sessionId !== 'string' || sessionId === '') return []
       return load().filter((item) => item.sessionId === sessionId).slice(-limit).reverse()
     },
