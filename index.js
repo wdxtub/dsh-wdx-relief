@@ -5,13 +5,13 @@
  * 1. 注册认证路由 `POST /api/wdx-relief/predict`，按会话日志生成「下一句输入」；
  * 2. 注册认证路由 `POST /api/wdx-relief/recap`，按最近一轮生成「现在到哪」；
  * 3. 注册认证路由 `POST /api/wdx-relief/recaps` 读取某会话生成过的回顾历史；
- *    `POST /api/wdx-relief/progress` 追加一条运行中的进度快照（和摘要共用一份历史）；
+ *    `POST /api/wdx-relief/progress` 生成并追加一条按时间窗的进度摘要（和摘要共用一份历史）；
  * 4. 注册认证路由 `POST /api/wdx-relief/btw`，回答右侧面板里的旁问；
  * 5. 把所有设置暴露成 volatile Config，供设置页读写并即时生效；
  * 6. 注册 `wdx-relief:reply-style` system prompt section，把回复风格编译成短指令；
  * 7. 挂载工具调用泄漏守卫：调用被写成正文、turn 静默结束时当场检测并在同一轮内纠正重发。
  *
- * 预测、回顾和旁问都走 ctx.llm，不写 session log、不触发 agent loop；
+ * 预测、回顾、进度摘要和旁问都走 ctx.llm，不写 session log、不触发 agent loop；
  * 回顾的模型调用直接从服务流式读取，不 append 消息、不注入上下文，
  * 因此输入框上方那一行永远不会进入模型上下文。
  */
@@ -52,7 +52,7 @@ export const Config = Schema.object({
   recapProgress: Schema.boolean()
     .default(true)
     .volatile()
-    .description('一轮跑久了还没给用户回复时，按设置的间隔记录一条进度（默认 10 分钟），整合进右侧栏的「会话回顾」，不单开 Tab'),
+    .description('一轮跑久了还没给用户回复时，按设置的间隔用便宜模型写一条这段时间的思路与进展（默认 10 分钟），失败退回本地摘要；整合进右侧栏的「会话回顾」，不单开 Tab'),
   recapStallSeconds: Schema.number()
     .default(600)
     .volatile()
@@ -316,7 +316,7 @@ export function apply(ctx, config) {
       path: PROGRESS_PATH,
       methods: ['POST'],
       requestBody: 'buffered',
-      fetch: (request) => handleRequest(request, (sessionId, signal, body) => {
+      fetch: (request) => handleRequest(request, async (sessionId, signal, body) => {
         if (typeof sessionId !== 'string' || sessionId === '') {
           const error = new Error('sessionId is required')
           error.code = 'invalid-params'
@@ -337,6 +337,18 @@ export function apply(ctx, config) {
           error.code = 'invalid-params'
           throw error
         }
+        // 页面刷新后客户端可能重发同一档；历史里已有就不再调一次模型。
+        const anchor = Number(entry.anchor) || 0
+        const duplicate = recapHistory.list(sessionId).some((item) => item.kind === 'progress'
+          && item.turn === turn
+          && (item.anchor || 0) === anchor
+          && item.bucket === bucket)
+        if (duplicate) return { appended: false }
+        // 新客户端会带一段「这 10 分钟的思考/动作」；有 digest 时让 Host 用便宜模型
+        // 写成叙述性进展。模型不可用或摘要功能关闭时保留客户端兜底文案。
+        const generated = entry.digest && typeof entry.digest === 'object'
+          ? await recapService.summarizeProgress(sessionId, entry, request.signal).catch(() => null)
+          : null
         return {
           appended: recapHistory.append({
             sessionId,
@@ -344,13 +356,18 @@ export function apply(ctx, config) {
             kind: 'progress',
             turn,
             bucket,
-            anchor: Number(entry.anchor) || 0,
+            anchor,
             status: entry.status === 'running' ? 'running' : 'stalled',
-            summary,
+            summary: generated !== null ? generated.summary : summary,
             activity: typeof entry.activity === 'string' ? entry.activity.slice(0, 300) : '',
             elapsedMs: Number(entry.elapsedMs) || 0,
             silenceMs: Number(entry.silenceMs) || 0,
             steps: Number(entry.steps) || 0,
+            windowMs: Number(entry.windowMs) || 0,
+            windowFromMs: Number(entry.windowFromMs) || 0,
+            windowToMs: Number(entry.windowToMs) || 0,
+            turnStartedAt: Number(entry.turnStartedAt) || 0,
+            generated: generated !== null,
             at: Date.now(),
           }),
         }

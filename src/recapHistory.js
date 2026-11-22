@@ -81,6 +81,11 @@ export function createRecapHistory({ file, maxEntries = MAX_ENTRIES, log = () =>
           elapsedMs: nonNegative(entry.elapsedMs),
           silenceMs: nonNegative(entry.silenceMs),
           steps: nonNegative(entry.steps),
+          windowMs: nonNegative(entry.windowMs),
+          windowFromMs: nonNegative(entry.windowFromMs),
+          windowToMs: nonNegative(entry.windowToMs),
+          turnStartedAt: nonNegative(entry.turnStartedAt),
+          generated: entry.generated === true,
         })
         while (list.length > maxEntries) list.shift()
         save()

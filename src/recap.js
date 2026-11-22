@@ -57,6 +57,13 @@ function clip(value, maxChars) {
   return `${text.slice(0, maxChars).trim()}…`
 }
 
+/** 保留最近的思考，而不是时间窗开头；长思考里越靠后越接近当前进展。 */
+function clipTail(value, maxChars) {
+  const text = String(value ?? '').replace(/\s+/g, ' ').trim()
+  if (text.length <= maxChars) return text
+  return `…${text.slice(-maxChars).trim()}`
+}
+
 /** 去掉标题、列表、引用和强调标记，让一行回顾更像人话。 */
 function stripMarkdown(line) {
   return String(line)
@@ -422,7 +429,7 @@ export async function resolveModelCandidates({ llm, defaultSelection, chain = ''
   return candidates.slice(0, Math.max(1, limit))
 }
 
-async function streamOnce({ service, candidate, recap, maxWords, signal, timeoutMs }) {
+async function streamOnce({ service, candidate, system, prompt, maxWords, signal, timeoutMs }) {
   const controller = new AbortController()
   const timer = setTimeout(() => controller.abort(), timeoutMs)
   const onAbort = () => controller.abort()
@@ -436,8 +443,8 @@ async function streamOnce({ service, candidate, recap, maxWords, signal, timeout
     const stream = service.stream({
       provider: candidate.provider,
       model: candidate.model,
-      system: buildSummarySystemPrompt(maxWords),
-      messages: [{ role: 'user', content: [{ type: 'text', text: buildSummaryPrompt(recap) }] }],
+      system,
+      messages: [{ role: 'user', content: [{ type: 'text', text: prompt }] }],
       maxTokens: Math.min(MAX_OUTPUT_TOKENS, Math.max(96, maxWords * 6)),
       temperature: 0.3,
       signal: controller.signal,
@@ -465,14 +472,14 @@ async function streamOnce({ service, candidate, recap, maxWords, signal, timeout
 }
 
 /**
- * 按链尝试生成摘要；全部失败返回 null，由调用方退回本地拼接。
+ * 按模型链尝试生成一段文字；全部失败返回 null，由调用方退回本地兜底。
  * @returns {Promise<{ text: string, provider: string, model: string }|null>}
  */
-export async function generateSummary({ llm, defaultSelection, recap, chain, maxWords, signal, timeoutMs = SUMMARY_TIMEOUT_MS, log = () => {} }) {
+async function generateWithChain({ llm, defaultSelection, chain, system, prompt, maxWords, signal, timeoutMs = SUMMARY_TIMEOUT_MS, log = () => {}, acceptSalvage = true }) {
   const service = typeof llm === 'function' ? llm() : llm
   if (!service || typeof service.stream !== 'function') return null
   const candidates = await resolveModelCandidates({ llm: service, defaultSelection, chain })
-  // 整条链共享 15 秒预算：便宜模型失败时快速换下一个，不让这一行拖住。
+  // 整条链共享 15 秒预算：便宜模型失败时快速换下一个，不让请求拖住。
   const deadline = Date.now() + 15000
   let salvage = null
   for (const candidate of candidates) {
@@ -481,25 +488,122 @@ export async function generateSummary({ llm, defaultSelection, recap, chain, max
       const remaining = deadline - Date.now()
       if (remaining <= 0) break
       try {
-        const text = await streamOnce({ service, candidate, recap, maxWords, signal, timeoutMs: Math.min(timeoutMs, remaining) })
+        const text = await streamOnce({ service, candidate, system, prompt, maxWords, signal, timeoutMs: Math.min(timeoutMs, remaining) })
         if (unfinishedEnding(text)) {
           // 模型写了半句就停（「…表前缀已替换，待」）：先在同一模型上重试一次。
-          log(`[wdx-relief] recap model ${candidate.provider}/${candidate.model} returned a half sentence`)
+          log(`[wdx-relief] model ${candidate.provider}/${candidate.model} returned a half sentence`)
           salvage = { text, provider: candidate.provider, model: candidate.model }
           continue
         }
         return { text, provider: candidate.provider, model: candidate.model }
       } catch (error) {
-        log(`[wdx-relief] recap model ${candidate.provider}/${candidate.model} failed`, error)
+        log(`[wdx-relief] model ${candidate.provider}/${candidate.model} failed`, error)
         break
       }
     }
   }
-  if (salvage !== null) {
+  if (salvage !== null && acceptSalvage) {
     const text = trimUnfinished(salvage.text)
     if (text !== '') return { ...salvage, text }
   }
   return null
+}
+
+/**
+ * 按链尝试生成摘要；全部失败返回 null，由调用方退回本地拼接。
+ * @returns {Promise<{ text: string, provider: string, model: string }|null>}
+ */
+export async function generateSummary({ llm, defaultSelection, recap, chain, maxWords, signal, timeoutMs = SUMMARY_TIMEOUT_MS, log = () => {} }) {
+  return generateWithChain({
+    llm,
+    defaultSelection,
+    chain,
+    system: buildSummarySystemPrompt(maxWords),
+    prompt: buildSummaryPrompt(recap),
+    maxWords,
+    signal,
+    timeoutMs,
+    log,
+  })
+}
+
+/** 进度摘要的目标长度：一到两句话，中文按字计。 */
+export const DEFAULT_PROGRESS_WORDS = 80
+
+/**
+ * 每 10 分钟一条的进度摘要。
+ *
+ * 输入是这一段时间窗里的思考片段和去参数后的工具动作；
+ * 输出叙述这段时间「在解决什么、用什么思路、推进到哪」，不列命令。
+ * 英文界面用英文 prompt，避免中文摘要和英文 UI 混在一起。
+ */
+export function buildProgressSystemPrompt(maxWords = DEFAULT_PROGRESS_WORDS, lang = 'zh') {
+  if (lang === 'en') {
+    return [
+      'You are writing the interval progress of an AI coding session that is still running, so someone returning can catch up in three seconds.',
+      'The input has the turn goal, reasoning fragments from this window, and tool actions with arguments removed.',
+      'Write 1-2 English sentences: what this window was solving, the approach, and how far it got or where it is stuck.',
+      'When prior progress is provided, spend half a sentence on the cumulative state and focus on what is new in this window.',
+      'Do not list commands, arguments, file paths or tool names; do not copy the reasoning verbatim; do not use "I", "you" or "assistant"; output only that text.',
+      `Limit: at most ${maxWords} words.`,
+    ].join('\n')
+  }
+  return [
+    '你在给一个仍在运行的 AI 编程会话写「这段时间的进展」，帮刚回来的人三秒内接上。',
+    '输入包含本轮目标、这段时间的思考片段和去掉参数的工具动作。',
+    '输出 1–2 句中文：这段时间在解决什么问题、用了什么思路、推进到哪或卡在哪。',
+    '如果给了「此前进展」，用半句点出累计状态，重点写最近这个时间窗的新进展。',
+    '不要罗列命令、参数、文件路径或工具名；不要照抄思考原文；不出现「我」「你」「助手」；只输出这段文字。',
+    `限制：不超过 ${maxWords} 个字。`,
+  ].join('\n')
+}
+
+/** @param {{ goal?: string, previous?: string, fromMinute?: number, toMinute?: number, reasoning?: string, actions?: string[] }} progress */
+export function buildProgressPrompt(progress, lang = 'zh') {
+  const english = lang === 'en'
+  const lines = []
+  if (progress.goal) lines.push(english ? `Turn goal: ${clip(progress.goal, 300)}` : `本轮目标：${clip(progress.goal, 300)}`)
+  const from = positiveInt(progress.fromMinute, 1)
+  const to = positiveInt(progress.toMinute, from)
+  const newFrom = Math.min(to, positiveInt(progress.newFromMinute, from))
+  if (newFrom > from) {
+    lines.push(english
+      ? `Window: minute ${from}-${to} of this turn; new in minute ${newFrom}-${to}`
+      : `时间窗：第 ${from}–${to} 分钟（本条新增第 ${newFrom}–${to} 分钟）`)
+  } else {
+    lines.push(english
+      ? `Window: minute ${from}-${to} of this turn (cumulative to minute ${to})`
+      : `时间窗：第 ${from}–${to} 分钟（本轮累计到第 ${to} 分钟）`)
+  }
+  if (progress.previous) lines.push(english ? `Prior progress: ${clip(progress.previous, 240)}` : `此前进展：${clip(progress.previous, 240)}`)
+  if (progress.reasoning) lines.push(english ? `Reasoning fragments:\n${clipTail(progress.reasoning, 3000)}` : `思考片段：\n${clipTail(progress.reasoning, 3000)}`)
+  const actions = Array.isArray(progress.actions)
+    ? progress.actions.filter((item) => typeof item === 'string' && item !== '').slice(0, 12)
+    : []
+  if (actions.length > 0) lines.push(english ? `Actions: ${actions.join('; ')}` : `动作：${actions.join('；')}`)
+  return lines.join('\n')
+}
+
+/** 生成结果里出现命令特征时丢弃，宁可用本地叙述也不把脚本参数带回面板。 */
+const COMMAND_LOOKING_RE = /\/Users\/|\/home\/|\s--[A-Za-z][\w-]*|`[^`]+`|(?:^|\s)(?:cd|npm|pnpm|yarn|git|node|python3?|bash|curl|rg|grep|sed|cat)\s+[A-Za-z0-9._~-]*[./][A-Za-z0-9./_~-]*/u
+
+export function looksLikeCommand(text) {
+  return typeof text === 'string' && COMMAND_LOOKING_RE.test(text)
+}
+
+export async function generateProgressSummary({ llm, defaultSelection, progress, chain, lang = 'zh', signal, timeoutMs = SUMMARY_TIMEOUT_MS, log = () => {}, maxWords = DEFAULT_PROGRESS_WORDS }) {
+  return generateWithChain({
+    llm,
+    defaultSelection,
+    chain,
+    system: buildProgressSystemPrompt(maxWords, lang),
+    prompt: buildProgressPrompt(progress, lang),
+    maxWords,
+    signal,
+    timeoutMs,
+    log,
+    acceptSalvage: false,
+  })
 }
 
 function recapKey(turn, recap) {
@@ -681,6 +785,95 @@ export function createRecapService({ config, sessions, llm, defaultSelection, hi
         throw error
       }
       return generateFrom(sessionId, session, turn, recap, signal, settings)
+    },
+
+    /**
+     * 运行中每 10 分钟的进度摘要：只读这一段时间窗的思考/动作和目标，
+     * 生成叙述性进展；模型不可用或功能关闭时返回 null，由路由用客户端兜底。
+     */
+    async summarizeProgress(sessionId, entry, signal) {
+      const settings = readRecapConfig(config)
+      if (!settings.enabled) return null
+      const digest = entry && entry.digest && typeof entry.digest === 'object' ? entry.digest : null
+      if (digest === null) return null
+      // 这段时间既没有思考也没有动作时，模型只能编泛泛的话；保留本地「没有新输出」。
+      const reasoning = typeof digest.reasoning === 'string' ? digest.reasoning.trim() : ''
+      const actions = Array.isArray(digest.actions) ? digest.actions.filter((item) => typeof item === 'string' && item !== '') : []
+      if (reasoning === '' && actions.length === 0) return null
+
+      const session = sessions.get(sessionId)
+      if (session === undefined) return null
+
+      let goal = ''
+      try {
+        const recap = buildRecap(session.deriveMessages())
+        goal = recap && typeof recap.user === 'string' ? recap.user : ''
+      } catch {
+        goal = ''
+      }
+
+      const bucket = positiveInt(Number(entry.bucket), 1)
+      const windowMs = positiveInt(Number(entry.windowMs), 600000)
+      const turnStartedAt = positiveInt(Number(entry.turnStartedAt), 0)
+      const windowFromMs = positiveInt(Number(entry.windowFromMs), 0)
+      const windowToMs = positiveInt(Number(entry.windowToMs), 0)
+      // 时间窗按「本轮开始」换算成分钟，跳档或中途回复后标签仍准确。
+      const anchor = Number(entry.anchor) || 0
+      let fromMinute
+      let newFromMinute
+      let toMinute
+      if (turnStartedAt > 0 && windowFromMs >= turnStartedAt && windowToMs > windowFromMs) {
+        newFromMinute = Math.max(1, Math.floor((windowFromMs - turnStartedAt) / 60000) + 1)
+        toMinute = Math.max(newFromMinute, Math.ceil((windowToMs - turnStartedAt) / 60000))
+        // 从本轮开始一直没回复：显示累计「1–20 分」，但提示模型重点写新增的 11–20。
+        fromMinute = anchor === turnStartedAt ? 1 : newFromMinute
+      } else {
+        const spanMinutes = Math.max(1, Math.round(windowMs / 60000))
+        newFromMinute = bucket > 1 ? (bucket - 1) * spanMinutes + 1 : 1
+        fromMinute = newFromMinute
+        toMinute = bucket * spanMinutes
+      }
+
+      // 同一轮、同一次等待的上一条进度，用来点出累计状态；旧格式的进度
+      // 摘要里可能还是命令流水，不喂给模型。
+      let previous = ''
+      if (history) {
+        try {
+          const prior = history.list(sessionId).find((item) => item.kind === 'progress'
+            && item.sessionId === sessionId
+            && item.turn === entry.turn
+            && (item.anchor || 0) === (Number(entry.anchor) || 0)
+            && item.bucket < bucket
+            && item.windowMs > 0)
+          if (prior && typeof prior.summary === 'string') previous = prior.summary
+        } catch {
+          previous = ''
+        }
+      }
+
+      const generated = await generateProgressSummary({
+        llm,
+        defaultSelection,
+        progress: {
+          goal,
+          previous,
+          fromMinute,
+          newFromMinute,
+          toMinute,
+          reasoning,
+          actions,
+        },
+        lang: entry.lang === 'en' ? 'en' : 'zh',
+        chain: settings.chain,
+        signal,
+        log,
+      })
+      if (generated === null) return null
+      if (looksLikeCommand(generated.text)) {
+        log('[wdx-relief] progress summary looks like a command; keeping the local summary')
+        return null
+      }
+      return { summary: generated.text, provider: generated.provider, model: generated.model }
     },
 
     /** 测试 / 会话销毁时清理缓存。 */

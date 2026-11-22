@@ -363,6 +363,66 @@ test('progress route appends one snapshot per turn and bucket', async () => {
   assert.equal((await missing.json()).error.code, 'not-found')
 })
 
+
+test('progress route replaces the local preview with a model-written interval summary', async () => {
+  const host = createHostContext('先确认刷新会覆盖哪些手工改动，再按时间窗整批迁移。')
+  apply(host.ctx, recapConfig())
+  const entry = {
+    turn: 3,
+    bucket: 2,
+    anchor: 0,
+    status: 'stalled',
+    summary: '在修改 migrate.js、运行命令',
+    activity: '修改 migrate.js；运行命令 ×2',
+    windowMs: 600000,
+    elapsedMs: 1320000,
+    silenceMs: 1200000,
+    steps: 4,
+    digest: { reasoning: '先确认 JOB 刷新会不会覆盖手工改动，再决定迁移粒度', actions: ['修改 migrate.js', '运行命令 ×2'], replies: '' },
+  }
+  const response = await host.route(PROGRESS_PATH).fetch(request({ sessionId: 'session-1', entry }, PROGRESS_PATH))
+  assert.deepEqual(await response.json(), { ok: true, data: { appended: true } })
+  assert.equal(host.llmCalls(), 1)
+
+  // 页面刷新重发同一档：不重复写历史，也不重复调模型。
+  const again = await host.route(PROGRESS_PATH).fetch(request({ sessionId: 'session-1', entry }, PROGRESS_PATH))
+  assert.deepEqual(await again.json(), { ok: true, data: { appended: false } })
+  assert.equal(host.llmCalls(), 1)
+
+  const list = await host.route(RECAPS_PATH).fetch(request({ sessionId: 'session-1' }, RECAPS_PATH))
+  const item = (await list.json()).data.items[0]
+  assert.equal(item.summary, '先确认刷新会覆盖哪些手工改动，再按时间窗整批迁移。')
+  assert.equal(item.windowMs, 600000)
+  assert.equal(item.generated, true)
+  assert.equal(item.activity, '修改 migrate.js；运行命令 ×2')
+})
+
+test('progress route keeps the local summary when the recap model is off', async () => {
+  const host = createHostContext()
+  apply(host.ctx, recapConfig({ recap: false }))
+  const entry = {
+    turn: 1,
+    bucket: 1,
+    anchor: 0,
+    status: 'stalled',
+    summary: '先读配置，确认旧标签写在哪。',
+    activity: '读取 recap.js',
+    windowMs: 600000,
+    elapsedMs: 620000,
+    silenceMs: 600000,
+    steps: 2,
+    digest: { reasoning: '先读配置，确认旧标签写在哪。', actions: ['读取 recap.js'], replies: '' },
+  }
+  const response = await host.route(PROGRESS_PATH).fetch(request({ sessionId: 'session-1', entry }, PROGRESS_PATH))
+  assert.deepEqual(await response.json(), { ok: true, data: { appended: true } })
+  assert.equal(host.llmCalls(), 0)
+
+  const list = await host.route(RECAPS_PATH).fetch(request({ sessionId: 'session-1' }, RECAPS_PATH))
+  const item = (await list.json()).data.items[0]
+  assert.equal(item.summary, '先读配置，确认旧标签写在哪。')
+  assert.equal(item.generated, false)
+})
+
 test('recap route respects the toggle and unknown sessions', async () => {
   const host = createHostContext()
   apply(host.ctx, recapConfig({ recap: false }))
@@ -424,7 +484,8 @@ test('client bundle registers the composer ghost prediction and settings page', 
   assert.equal(loaded.id, 'dsh-wdx-relief')
 
   const react = {
-    createElement() {},
+    Fragment: Symbol('Fragment'),
+    createElement(type, props, ...children) { return { type, props: props || {}, children } },
     useState() {},
     useEffect() {},
     useRef() {},
@@ -508,6 +569,7 @@ test('client bundle registers the composer ghost prediction and settings page', 
   assert.deepEqual([...locales.map(([ns]) => ns)], ['wdx-relief'])
   assert.deepEqual(Object.keys(locales[0][1]).sort(), ['en', 'zh'])
   assert.deepEqual(registrations.map((entry) => entry.options.name), [
+    'conversation.session.header.utilities',
     'sidebar.right.pane.tab',
     'conversation.input.overlay',
     'conversation.input.dock',
@@ -519,32 +581,46 @@ test('client bundle registers the composer ghost prediction and settings page', 
   assert.equal(tabTypes[0].priority, 'extension')
   assert.equal(typeof tabTypes[0].title, 'function')
   assert.equal(tabTypes[0].guide[0].order, 35)
-  assert.equal(registrations[0].options.key, 'wdx-relief')
+  const header = registrations[0].options
+  assert.equal(header.id, 'wdx-relief')
+  assert.equal(header.order, 12)
   assert.equal(typeof registrations[0].component, 'function')
-  assert.equal(registrations[0].options.inject('session-1').defaultTab, 'recaps')
+  assert.equal(header.label(), '打开 WDX Relief：会话回顾 / 旁问')
+  const headerButton = registrations[0].component().children.find((child) => child && child.props && child.props.type === 'button')
+  assert.equal(headerButton.props.className.includes('headerBtn'), true)
+  assert.equal(headerButton.props.title, '打开 WDX Relief：会话回顾 / 旁问')
+  assert.equal(headerButton.props['aria-label'], '打开 WDX Relief：会话回顾 / 旁问')
+  headerButton.props.onClick()
+  assert.equal(openedTabs[0].kind, 'wdx-relief')
+  assert.equal(openedTabs[0].options, undefined)
+  const sidebar = registrations[1].options
+  assert.equal(sidebar.key, 'wdx-relief')
+  assert.equal(typeof registrations[1].component, 'function')
+  assert.equal(sidebar.inject('session-1').defaultTab, 'recaps')
 
-  const overlay = registrations[1].options
+  const overlay = registrations[2].options
   assert.equal(overlay.id, 'wdx-prediction')
   assert.equal(overlay.locale, 'wdx-relief')
   assert.equal(overlay.inject('session-1').hooks.settings.getSnapshot().value.enabled, true)
 
-  const recap = registrations[2].options
+  const recap = registrations[3].options
   assert.equal(recap.id, 'wdx-turn-line-above')
   assert.equal(recap.order, 30)
   const recapInjected = recap.inject('session-1')
   assert.equal(recapInjected.hooks.settings.getSnapshot().value.recap, true)
   assert.equal(typeof recapInjected.openProgress, 'function')
   recapInjected.openProgress()
-  assert.equal(openedTabs[0].kind, 'wdx-relief')
-  assert.equal(openedTabs[0].options.params.wdxReliefTab, 'recaps')
-  assert.equal(openedTabs[0].options.params.wdxRecapFilter, 'progress')
+  const progressTab = openedTabs.at(-1)
+  assert.equal(progressTab.kind, 'wdx-relief')
+  assert.equal(progressTab.options.params.wdxReliefTab, 'recaps')
+  assert.equal(progressTab.options.params.wdxRecapFilter, 'progress')
 
   assert.equal(typeof client.BtwSection, 'function')
 
-  const config = registrations[3].options
+  const config = registrations[4].options
   assert.equal(config.key, 'dsh-wdx-relief')
   assert.equal(config.locale, 'wdx-relief')
-  assert.equal(typeof registrations[3].component, 'function')
+  assert.equal(typeof registrations[4].component, 'function')
   const injected = config.inject()
   const settings = injected.hooks.settings.getSnapshot()
   assert.equal(settings.enabled.text, 'true')
@@ -706,7 +782,7 @@ test('progress snapshots use the 10 minute bucket and stay compact', () => {
   ]
   const settings = { stallMs: 600000 }
   const t = (key) => key
-  const first = client.progressEntryOf(client.deriveTurnView(entries, 603000), settings, t)
+  const first = client.progressEntryOf(client.deriveTurnView(entries, 603000), settings, t, entries)
   assert.equal(first.turn, 3)
   assert.equal(first.bucket, 1)
   assert.equal(first.status, 'stalled')
@@ -715,14 +791,16 @@ test('progress snapshots use the 10 minute bucket and stay compact', () => {
   assert.equal(first.steps, 1)
   assert.equal(first.anchor, 1000)
   assert.equal(client.deriveTurnView(entries, 603000).quietMs, 602000)
-  assert.match(first.summary, /第 3 轮/)
-  assert.match(first.summary, /等待 10 分/)
-  assert.match(first.activity, /job_output/)
+  assert.equal(first.windowMs, 600000)
+  assert.equal(first.digest.actions.length, 1)
+  // 命令参数不进入进度摘要，只保留动作本身。
+  assert.doesNotMatch(first.digest.actions[0], /job_output/)
+  assert.equal(first.activity, first.digest.actions[0])
 
-  const second = client.progressEntryOf(client.deriveTurnView(entries, 1210000), settings, t)
+  const second = client.progressEntryOf(client.deriveTurnView(entries, 1210000), settings, t, entries)
   assert.equal(second.bucket, 2)
   assert.equal(second.silenceMs, 1200000)
-  assert.match(second.summary, /等待 20 分/)
+  assert.equal(second.windowMs, 600000)
 })
 
 
@@ -754,11 +832,12 @@ test('progress fires while tools keep running without a reply', () => {
   assert.equal(view.lastReplyAt, 0)
   assert.equal(view.quietMs, 1140000)
 
-  const entry = client.progressEntryOf(view, settings, t)
+  const entry = client.progressEntryOf(view, settings, t, entries)
   assert.equal(entry.bucket, 1)
   assert.equal(entry.anchor, 0)
-  assert.match(entry.summary, /第 1 轮/)
-  assert.match(entry.summary, /等待 10 分/)
+  assert.match(entry.summary, /继续排查/)
+  assert.equal(entry.digest.reasoning, '继续排查')
+  assert.equal(entry.windowMs, 600000)
 
   const segments = client.buildTurnSegments(view, { progress: true, stallMs: 600000, activity: false, summary: true }, t, null)
   assert.deepEqual([...segments.map((segment) => segment.key)], ['progress', 'activity'])
@@ -899,7 +978,7 @@ test('turn view reports silence, status and progress segments', () => {
   const runningSegments = client.buildTurnSegments(view, { progress: true, stallMs: 45000, activity: false, summary: true }, t, null)
   assert.deepEqual([...runningSegments.map((segment) => segment.key)], ['progress', 'activity'])
   assert.match(runningSegments[0].text, /等待/)
-  assert.match(runningSegments[1].text, /job_output/)
+  assert.match(runningSegments[1].text, /运行命令/)
 
   const completedView = client.deriveTurnView([
     ...entries,
@@ -982,7 +1061,7 @@ test('turn line renders a silent running turn with a progress shortcut', () => {
   assert.match(json, /wdxt-row/)
   assert.match(json, /data-state":"stalled/)
   assert.match(json, /无新输出/)
-  assert.match(json, /job_output/)
+  assert.match(json, /运行命令/)
   assert.match(json, /wdxt-open/)
   ;(function walk(node) {
     if (!node || typeof node !== 'object') return
@@ -1313,4 +1392,56 @@ test('accepting a prediction does not permanently dismiss it', () => {
   const body = code.slice(start, end)
   assert.match(body, /setPrediction\(null\)/)
   assert.doesNotMatch(body, /setDismissed\(/)
+})
+
+test('progress digest keeps only the current interval idea and strips command parameters', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+  const client = loaded.factory((id) => {
+    if (id === 'react') return { createElement() {}, useState() {}, useEffect() {}, useRef() {}, useLayoutEffect() {} }
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+
+  const entries = [
+    { type: 'event', event: { type: 'turn/start', seq: 1, time: 0, data: { turn: 1 } } },
+    { type: 'transient', event: { type: 'assistant/live-chunk', seq: 2, time: 60000, data: { turn: 1, chunk: { type: 'reasoning-delta', text: '先读配置，确认旧标签写在哪。' } } } },
+    { type: 'event', event: { type: 'tool/call', seq: 3, time: 120000, data: { callId: 'c1', name: 'read', arguments: '{"file_path":"/repo/src/recap.js"}', turn: 1 } } },
+    { type: 'transient', event: { type: 'assistant/live-chunk', seq: 4, time: 660000, data: { turn: 1, chunk: { type: 'reasoning-delta', text: '改成按时间窗总结，命令参数不要带。' } } } },
+    { type: 'event', event: { type: 'tool/call', seq: 5, time: 720000, data: { callId: 'c2', name: 'bash', arguments: '{"command":"npm test --watch"}', turn: 1 } } },
+    { type: 'event', event: { type: 'assistant/message', seq: 6, time: 780000, data: { turn: 1, message: { role: 'assistant', content: [{ type: 'reasoning', text: '第二段思考也要保留。' }] } } } },
+  ]
+  const view = client.deriveTurnView(entries, 1260000)
+  const first = client.collectProgressDigest(entries, view, 1, 600000)
+  assert.match(first.reasoning, /先读配置/)
+  assert.doesNotMatch(first.reasoning, /按时间窗/)
+  assert.equal(first.actions[0].verb, 'read')
+  assert.equal(first.actions[0].target, 'recap.js')
+
+  const second = client.collectProgressDigest(entries, view, 2, 600000)
+  assert.match(second.reasoning, /按时间窗/)
+  assert.match(second.reasoning, /第二段思考也要保留/)
+  assert.doesNotMatch(second.reasoning, /先读配置/)
+  assert.equal(second.actions[0].verb, 'command')
+  // 命令的具体参数不进入进度摘要。
+  assert.equal(second.actions[0].target, '')
+
+  const labels = { 'progress.interval': '{from}–{to} 分', 'progress.intervalOne': '{minute} 分' }
+  const t = (key, params) => {
+    let value = labels[key] ?? key
+    for (const [name, text] of Object.entries(params ?? {})) value = value.replaceAll(`{${name}}`, String(text))
+    return value
+  }
+  assert.equal(client.progressIntervalText({ bucket: 1, windowMs: 600000 }, t), '1–10 分')
+  assert.equal(client.progressIntervalText({ bucket: 2, windowMs: 600000 }, t), '1–20 分')
+  assert.equal(client.progressIntervalText({ bucket: 1 }, t), '')
+  // 跳档或中途回复：按真实时间窗落在本轮的哪几分钟。
+  assert.equal(client.progressIntervalText({ turnStartedAt: 1000000, windowFromMs: 2200000, windowToMs: 2800000 }, t), '21–30 分')
+  assert.equal(client.progressIntervalText({ turnStartedAt: 1000000, windowFromMs: 1200000, windowToMs: 1800000 }, t), '4–14 分')
+  // 从本轮开始一直没回复时，第 2 条按累计口径显示 1–20。
+  assert.equal(client.progressIntervalText({
+    turnStartedAt: 1000000, anchor: 1000000, windowFromMs: 1600000, windowToMs: 2200000,
+  }, t), '1–20 分')
 })

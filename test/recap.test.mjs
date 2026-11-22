@@ -2,6 +2,8 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 
 import {
+  buildProgressPrompt,
+  buildProgressSystemPrompt,
   buildRecap,
   buildSummarySystemPrompt,
   countUserTurns,
@@ -9,6 +11,7 @@ import {
   fallbackSummary,
   generateSummary,
   limitWords,
+  looksLikeCommand,
   readRecapConfig,
   resolveModelCandidates,
   sanitizeSummary,
@@ -486,4 +489,159 @@ test('defaults refresh the summary on every new turn', async () => {
   assert.equal(next.skipped, undefined)
   assert.equal(next.recap.summary, '进度二')
   assert.equal(calls, 2)
+})
+
+
+test('progress prompt asks for the interval idea, not commands', () => {
+  const prompt = buildProgressPrompt({
+    goal: '把迁移脚本改成按时间窗刷新',
+    previous: '先定位了旧标签的写入点',
+    fromMinute: 11,
+    toMinute: 20,
+    reasoning: '先确认 JOB 刷新会不会覆盖手工改动，再决定迁移粒度',
+    actions: ['修改 migrate.js', '运行命令 ×2'],
+    replies: '正在验证',
+  })
+  assert.match(prompt, /时间窗：第 11–20 分钟（本轮累计到第 20 分钟）/)
+
+  const cumulative = buildProgressPrompt({ fromMinute: 1, newFromMinute: 11, toMinute: 20 })
+  assert.match(cumulative, /时间窗：第 1–20 分钟（本条新增第 11–20 分钟）/)
+  assert.match(prompt, /本轮目标：把迁移脚本改成按时间窗刷新/)
+  assert.match(prompt, /此前进展：先定位了旧标签的写入点/)
+  assert.match(prompt, /先确认 JOB 刷新会不会覆盖手工改动/)
+  assert.match(prompt, /修改 migrate\.js/)
+  assert.match(buildProgressSystemPrompt(80), /不要罗列命令、参数、文件路径或工具名/)
+})
+
+test('summarizeProgress builds the interval prompt and uses the model text', async () => {
+  const calls = []
+  const service = createRecapService({
+    config: config(),
+    sessions: { get: () => ({ seq: 3, deriveMessages: () => [message('user', '把迁移脚本改成按时间窗刷新')] }) },
+    llm: () => ({
+      stream: (options) => {
+        calls.push(options)
+        return fakeStream('先确认刷新会覆盖哪些手工改动，再按时间窗整批迁移。')
+      },
+    }),
+    defaultSelection: () => ({ provider: 'p', model: 'm' }),
+    history: { list: () => [], append: () => true },
+  })
+  const result = await service.summarizeProgress('s1', {
+    turn: 2,
+    bucket: 2,
+    anchor: 0,
+    windowMs: 600000,
+    digest: { reasoning: '先确认 JOB 刷新会不会覆盖手工改动', actions: ['修改 migrate.js'], replies: '' },
+  })
+  assert.equal(result.summary, '先确认刷新会覆盖哪些手工改动，再按时间窗整批迁移。')
+  assert.equal(calls.length, 1)
+  assert.match(calls[0].messages[0].content[0].text, /时间窗：第 11–20 分钟（本轮累计到第 20 分钟）/)
+  assert.match(calls[0].messages[0].content[0].text, /本轮目标：把迁移脚本改成按时间窗刷新/)
+})
+
+test('summarizeProgress respects the recap toggle and missing sessions', async () => {
+  let calls = 0
+  const disabled = createRecapService({
+    config: config({ recap: false }),
+    sessions: { get: () => ({ seq: 1, deriveMessages: () => [] }) },
+    llm: () => ({ stream: () => { calls += 1; return fakeStream('x') } }),
+    defaultSelection: () => ({ provider: 'p', model: 'm' }),
+  })
+  assert.equal(await disabled.summarizeProgress('s1', { turn: 1, bucket: 1, windowMs: 600000, digest: { reasoning: 'x' } }), null)
+  assert.equal(calls, 0)
+
+  const missing = createRecapService({
+    config: config(),
+    sessions: { get: () => undefined },
+    llm: () => ({ stream: () => { calls += 1; return fakeStream('x') } }),
+    defaultSelection: () => ({ provider: 'p', model: 'm' }),
+  })
+  assert.equal(await missing.summarizeProgress('s1', { turn: 1, bucket: 1, windowMs: 600000, digest: { reasoning: 'x' } }), null)
+  assert.equal(calls, 0)
+
+  const empty = createRecapService({
+    config: config(),
+    sessions: { get: () => ({ seq: 1, deriveMessages: () => [] }) },
+    llm: () => ({ stream: () => { calls += 1; return fakeStream('x') } }),
+    defaultSelection: () => ({ provider: 'p', model: 'm' }),
+  })
+  assert.equal(await empty.summarizeProgress('s1', { turn: 1, bucket: 1, windowMs: 600000, digest: { reasoning: '', actions: [], replies: '' } }), null)
+  assert.equal(calls, 0)
+})
+
+
+test('progress prompt follows the UI language and rejects command-shaped output', () => {
+  const englishSystem = buildProgressSystemPrompt(80, 'en')
+  assert.match(englishSystem, /Do not list commands/)
+  assert.match(englishSystem, /at most 80 words/)
+  const englishPrompt = buildProgressPrompt({
+    goal: 'migrate the script by time window',
+    fromMinute: 11,
+    toMinute: 20,
+    reasoning: 'check the JOB refresh first',
+    actions: ['Edit migrate.js', 'Run command x2'],
+  }, 'en')
+  assert.match(englishPrompt, /Window: minute 11-20/)
+  assert.match(englishPrompt, /Actions: Edit migrate\.js; Run command x2/)
+
+  assert.equal(looksLikeCommand('运行 npm test --watch 验证'), true)
+  assert.equal(looksLikeCommand('改的是 /Users/someone/project 里的文件'), true)
+  assert.equal(looksLikeCommand('先确认刷新会覆盖哪些手工改动，再按时间窗迁移。'), false)
+})
+
+test('summarizeProgress drops a command-shaped model answer and keeps the local fallback', async () => {
+  const service = createRecapService({
+    config: config(),
+    sessions: { get: () => ({ seq: 1, deriveMessages: () => [message('user', '跑测试')] }) },
+    llm: () => ({ stream: () => fakeStream('运行 npm test --watch 直到通过') }),
+    defaultSelection: () => ({ provider: 'p', model: 'm' }),
+  })
+  assert.equal(await service.summarizeProgress('s1', {
+    turn: 1,
+    bucket: 1,
+    windowMs: 600000,
+    digest: { reasoning: '先定位失败用例，再决定是否改断言。', actions: ['运行命令 ×2'] },
+  }), null)
+})
+
+test('summarizeProgress uses the real window offsets for the prompt window', async () => {
+  const calls = []
+  const service = createRecapService({
+    config: config(),
+    sessions: { get: () => ({ seq: 1, deriveMessages: () => [message('user', '继续迁移')] }) },
+    llm: () => ({ stream: (options) => { calls.push(options); return fakeStream('继续推进迁移并验证。') } }),
+    defaultSelection: () => ({ provider: 'p', model: 'm' }),
+  })
+  await service.summarizeProgress('s1', {
+    turn: 3,
+    bucket: 3,
+    windowMs: 600000,
+    turnStartedAt: 1000000,
+    windowFromMs: 2200000,
+    windowToMs: 2800000,
+    digest: { reasoning: '继续迁移', actions: ['修改 a.js'] },
+  })
+  assert.match(calls[0].messages[0].content[0].text, /时间窗：第 21–30 分钟（本轮累计到第 30 分钟）/)
+})
+
+test('summarizeProgress keeps the cumulative window while pointing at the new interval', async () => {
+  const calls = []
+  const service = createRecapService({
+    config: config(),
+    sessions: { get: () => ({ seq: 1, deriveMessages: () => [message('user', '继续迁移')] }) },
+    llm: () => ({ stream: (options) => { calls.push(options); return fakeStream('按时间窗推进迁移，已改完标签。') } }),
+    defaultSelection: () => ({ provider: 'p', model: 'm' }),
+  })
+  await service.summarizeProgress('s1', {
+    turn: 2,
+    bucket: 2,
+    anchor: 1000000,
+    windowMs: 600000,
+    turnStartedAt: 1000000,
+    windowFromMs: 1600000,
+    windowToMs: 2200000,
+    digest: { reasoning: '继续迁移', actions: ['修改 a.js'] },
+  })
+  assert.match(calls[0].messages[0].content[0].text, /时间窗：第 1–20 分钟（本条新增第 11–20 分钟）/)
 })

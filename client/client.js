@@ -163,6 +163,7 @@ window.__ModuleLoader__.load({
       '@media (hover:hover){.wdxp-row:hover{background:var(--dsw-alias-interactive-bg-hover)}}',
       '.wdxp-row:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:-1px}',
       '.wdxp-rowText{overflow-wrap:anywhere;white-space:normal;flex:1;min-width:0;font-size:13px;line-height:19px}',
+      '.wdxp-rowInterval{color:var(--dsw-alias-label-tertiary);white-space:nowrap;font-variant-numeric:tabular-nums;flex:none;padding-left:4px;font-size:10px;line-height:19px}',
       '.wdxp-rowMeta{color:var(--dsw-alias-label-caption);white-space:nowrap;font-variant-numeric:tabular-nums;flex:none;font-size:11px;line-height:19px}',
       '.wdxp-note{color:var(--dsw-alias-label-tertiary);align-items:center;gap:6px;margin:2px 0 0;font-size:12px;line-height:18px;display:flex}',
       '.wdxp-link{color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;padding:0;font:inherit;font-size:12px;line-height:18px;text-decoration:underline;align-self:flex-start;text-align:left}',
@@ -198,6 +199,14 @@ window.__ModuleLoader__.load({
       '.wdxh-label{color:var(--dsw-alias-label-caption);margin-right:4px;font-size:11px}',
       '.wdxp-skeleton{flex-direction:column;gap:2px;display:flex}',
       '.wdxp-skeletonRow{height:38px;border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-skeleton)}',
+    ].join('')
+
+    // 顶栏入口只挂 4 条规则，不跟着面板一起重复注入整份 CSS。
+    var HEADER_CSS = [
+      '.wdxr-headerBtn{width:26px;height:26px;padding:0;border:0;border-radius:8px;background:transparent;color:var(--dsw-alias-label-secondary);cursor:pointer;display:inline-flex;align-items:center;justify-content:center;transition:background .14s,color .14s}',
+      '@media (hover:hover){.wdxr-headerBtn:hover{background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}}',
+      '.wdxr-headerBtn:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color,var(--dsw-alias-state-business-primary));outline-offset:1px}',
+      '.wdxr-headerBtn svg{display:block}',
     ].join('')
 
     function PluginStyles(props) {
@@ -306,6 +315,7 @@ window.__ModuleLoader__.load({
       'settings.defaultTab.btw': '旁问',
       'panel.title': 'WDX Relief',
       'panel.guide': '按轮次看进度与摘要，也可以随手旁问',
+      'panel.open': '打开 WDX Relief：会话回顾 / 旁问',
       'panel.refresh': '刷新',
       'section.recaps': '会话回顾',
       'panel.recapEmpty': '还没有生成过摘要或进度记录；聊过一轮，或一轮跑久了还没回复时就会出现',
@@ -351,8 +361,13 @@ window.__ModuleLoader__.load({
       'progress.quietLabel': '未回复',
       'progress.elapsedLabel': '总耗时',
       'progress.stepsLabel': '步数',
-      'progress.current': '现在',
-      'progress.entry': '第 {turn} 轮 · {activity} · 等待 {duration}',
+      'progress.interval': '第 {from}–{to} 分',
+      'progress.intervalOne': '第 {minute} 分',
+      'progress.intervalLabel': '时间窗',
+      'progress.doing': '在{actions}',
+      'progress.actions': '本段动作',
+      'progress.noOutput': '这段时间没有新输出',
+      'progress.command': '运行命令',
       'progress.open': '查看进度',
       'section.btw': '旁问',
       'btw.placeholder': '问点什么…',
@@ -480,6 +495,7 @@ window.__ModuleLoader__.load({
       'settings.defaultTab.btw': 'Aside',
       'panel.title': 'WDX Relief',
       'panel.guide': 'Review per-turn progress and recaps, and ask aside',
+      'panel.open': 'Open WDX Relief: session review / aside',
       'panel.refresh': 'Refresh',
       'section.recaps': 'Recaps',
       'panel.recapEmpty': 'No summary or progress yet; one appears after the first turn, or when a turn runs long without replying',
@@ -525,8 +541,13 @@ window.__ModuleLoader__.load({
       'progress.quietLabel': 'No reply yet',
       'progress.elapsedLabel': 'Elapsed',
       'progress.stepsLabel': 'Steps',
-      'progress.current': 'Now',
-      'progress.entry': 'Turn {turn} · {activity} · waiting {duration}',
+      'progress.interval': 'min {from}–{to}',
+      'progress.intervalOne': 'min {minute}',
+      'progress.intervalLabel': 'Window',
+      'progress.doing': 'Working on {actions}',
+      'progress.actions': 'Actions',
+      'progress.noOutput': 'No new output in this window',
+      'progress.command': 'Run command',
       'progress.open': 'View progress',
       'section.btw': 'Aside',
       'btw.placeholder': 'Ask anything…',
@@ -738,6 +759,33 @@ window.__ModuleLoader__.load({
       var now = new Date()
       if (date.toDateString() === now.toDateString()) return clock
       return (date.getMonth() + 1) + '/' + date.getDate() + ' ' + clock
+    }
+
+    /** 进度条目覆盖的累计时间窗：「第 1–20 分」。旧记录没有 windowMs 时返回空。 */
+    function progressIntervalText(item, t) {
+      var bucket = Number(item && item.bucket)
+      var windowMs = Number(item && item.windowMs)
+      var turnStartedAt = Number(item && item.turnStartedAt)
+      var windowFromMs = Number(item && item.windowFromMs)
+      var windowToMs = Number(item && item.windowToMs)
+
+      var from = 0
+      var to = 0
+      var anchor = Number(item && item.anchor)
+      if (turnStartedAt > 0 && windowFromMs >= turnStartedAt && windowToMs > windowFromMs) {
+        // 时间窗落在本轮里的哪几分钟；中途回复过或跳档时也准确。
+        from = Math.max(1, Math.floor((windowFromMs - turnStartedAt) / 60000) + 1)
+        to = Math.max(from, Math.ceil((windowToMs - turnStartedAt) / 60000))
+        // 从本轮开始就一直没回复：第 2 条按累计口径显示「1–20 分」。
+        if (anchor === turnStartedAt) from = 1
+      } else if (isFinite(windowMs) && windowMs >= 1000 && isFinite(bucket) && bucket >= 1) {
+        var span = Math.max(1, Math.round(windowMs / 60000))
+        from = 1
+        to = bucket * span
+      }
+      if (to < 1) return ''
+      if (from === to) return trf(t, 'progress.intervalOne', { minute: to }, '第 ' + to + ' 分')
+      return trf(t, 'progress.interval', { from: from, to: to }, '第 ' + from + '–' + to + ' 分')
     }
 
     // ---------------------------------------------------------- prediction
@@ -1034,6 +1082,13 @@ window.__ModuleLoader__.load({
       return value.slice(0, maxChars).trim() + '…'
     }
 
+    /** 长思考保留最近的尾部：越靠后越接近当前进展。 */
+    function clipTextTail(text, maxChars) {
+      var value = String(text === undefined || text === null ? '' : text).replace(/\s+/g, ' ').trim()
+      if (value.length <= maxChars) return value
+      return '…' + value.slice(-maxChars).trim()
+    }
+
     function baseName(path) {
       var value = String(path || '').replace(/[\\/]+$/u, '')
       var parts = value.split(/[\\/]/u)
@@ -1090,6 +1145,8 @@ window.__ModuleLoader__.load({
 
     function toolLabel(tool, t) {
       if (!tool) return ''
+      // 命令的目标就是脚本参数，活动和进度都只保留「运行命令」。
+      if (tool.verb === 'command') return tr(t, 'progress.command', '运行命令')
       var verb = tr(t, 'turn.verb.' + tool.verb, tool.verb === 'other' ? '调用' : tool.verb)
       return tool.target ? verb + ' ' + tool.target : verb
     }
@@ -1451,24 +1508,156 @@ window.__ModuleLoader__.load({
     }
 
     /**
-     * 运行中的进度快照：每 `stallMs` 没给用户回复记一条，摘要和内容都保持短。
-     * 纯函数，方便测试；写历史由调用方发一次 RPC。
+     * 只看与「当前轮 + 当前时间窗」相交的事件，并把这段时间压成
+     * 叙述摘要的输入：思考片段和去参数的动作。
+     * 命令的目标就是脚本参数，这里只保留动词；读写文件保留文件名。
      */
-    function progressEntryOf(view, settings, t) {
+    function collectProgressDigest(entries, view, bucket, windowMs) {
+      var span = Math.max(1, Number(windowMs) || 1)
+      var turn = view && typeof view.turn === 'number' ? view.turn : 0
+      var anchorTime = view && typeof view.lastReplyAt === 'number' ? view.lastReplyAt : 0
+      var from = anchorTime + Math.max(0, bucket - 1) * span
+      var to = anchorTime + bucket * span
+      var empty = { from: from, to: to, windowMs: span, reasoning: '', actions: [] }
+      if (turn === 0) return empty
+
+      var reasoning = ''
+      var actions = []
+      var list = Array.isArray(entries) ? entries : []
+      for (var index = 0; index < list.length; index += 1) {
+        var event = eventOf(list[index])
+        if (!event || eventTurn(event) !== turn) continue
+        var time = typeof event.time === 'number' ? event.time : 0
+        if (time < from || time >= to) continue
+        var data = objectOf(event.data)
+
+        if (event.type === 'assistant/live-chunk') {
+          var chunk = objectOf(data.chunk)
+          if (chunk.type === 'reasoning-delta') reasoning += String(chunk.text || '')
+          continue
+        }
+        if (event.type === 'assistant/message') {
+          var message = objectOf(data.message)
+          var contentReasoning = reasoningFromContent(message.content)
+          if (contentReasoning !== '') {
+            // 同一步可能既有 live-chunk 又有完整 message：忽略空白差异后能互相包含时
+            // 只留更全的一份，不同步骤的思考则追加，不能因为窗口里已有思考就整段丢弃。
+            if (reasoning === '') reasoning = contentReasoning
+            else {
+              var normalizedReasoning = reasoning.replace(/\s+/gu, '')
+              var normalizedContent = contentReasoning.replace(/\s+/gu, '')
+              if (normalizedReasoning.indexOf(normalizedContent) === -1) {
+                reasoning = normalizedContent.indexOf(normalizedReasoning) !== -1
+                  ? contentReasoning
+                  : reasoning + '\n' + contentReasoning
+              } else if (normalizedContent.length > normalizedReasoning.length) {
+                reasoning = contentReasoning
+              }
+            }
+          }
+          continue
+        }
+        if (event.type === 'tool/call') {
+          var described = describeToolCall(data.name, data.arguments)
+          var keepTarget = described.verb !== 'command' && described.verb !== 'search' && described.verb !== 'web'
+          var target = keepTarget ? described.target : ''
+          var found = null
+          for (var actionIndex = 0; actionIndex < actions.length; actionIndex += 1) {
+            if (actions[actionIndex].verb === described.verb && actions[actionIndex].target === target) {
+              found = actions[actionIndex]
+              break
+            }
+          }
+          if (found === null) actions.push({ verb: described.verb, target: target, count: 1 })
+          else found.count += 1
+        }
+      }
+      return {
+        from: from,
+        to: to,
+        windowMs: span,
+        reasoning: clipTextTail(reasoning, 6000),
+        actions: actions,
+      }
+    }
+
+    function progressActionLabels(digest, t) {
+      var labels = []
+      var actions = digest && Array.isArray(digest.actions) ? digest.actions : []
+      for (var index = 0; index < actions.length; index += 1) {
+        var action = actions[index]
+        var label = toolLabel({ verb: action.verb, target: action.target }, t)
+        if (label === '') continue
+        if (action.count > 1) label += ' ×' + action.count
+        labels.push(label)
+      }
+      return labels
+    }
+
+    /** 本地兜底也要避开命令句，否则模型摘要被拦下后仍会显示脚本参数。 */
+    function containsCommandText(text) {
+      return /\/Users\/|\/home\/|\s--[A-Za-z][\w-]*|`[^`]+`/u.test(String(text || ''))
+    }
+
+    /** 模型失败时的本地兜底：思考片段里第一句不含命令的话 > 这段在做什么动作。 */
+    function progressLocalSummary(digest, actions, t) {
+      var reasoning = String((digest && digest.reasoning) || '')
+        .replace(/<[^>]*signature[^>]*>/gu, ' ')
+        .replace(/\s+/gu, ' ')
+        .trim()
+      if (reasoning !== '') {
+        var sentences = reasoning.match(/[^。！？!?]{6,}[。！？!?]/gu) || [reasoning]
+        for (var index = 0; index < sentences.length; index += 1) {
+          if (!containsCommandText(sentences[index])) return clipText(sentences[index], 160)
+        }
+      }
+      if (actions.length > 0) {
+        return trf(t, 'progress.doing', { actions: actions.slice(0, 3).join('、') }, '在' + actions.slice(0, 3).join('、'))
+      }
+      return tr(t, 'progress.noOutput', '这段时间没有新输出')
+    }
+
+    /** DSH 会把当前语言同步到 <html lang>；只区分中英文，和插件字典一致。 */
+    function activeUiLang() {
+      try {
+        var lang = document && document.documentElement ? String(document.documentElement.lang || '') : ''
+        if (lang === '' && typeof navigator !== 'undefined') lang = String(navigator.language || '')
+        if (lang !== '') return lang.toLowerCase().indexOf('zh') === 0 ? 'zh' : 'en'
+      } catch (error) {
+        // 非浏览器环境按中文处理。
+      }
+      return 'zh'
+    }
+
+    /**
+     * 运行中的进度快照：每 `stallMs` 没给用户回复记一条。
+     * 摘要写「这 10 分钟的思路和进展」，不再罗列命令；真正的模型摘要由
+     * Host 的 progress 路由生成，这里只带时间窗和思考片段过去。
+     */
+    function progressEntryOf(view, settings, t, entries, lang) {
       var bucket = Math.max(1, Math.floor(view.quietMs / settings.stallMs))
-      var waiting = formatDuration(bucket * settings.stallMs, t)
-      var activity = activityText(view, t)
-      var subject = activity !== '' ? activity : tr(t, 'turn.thinking', '思考中…')
+      var windowMs = settings.stallMs
+      var digest = collectProgressDigest(entries, view, bucket, windowMs)
+      var actions = progressActionLabels(digest, t)
       return {
         turn: view.turn,
         bucket: bucket,
         // 锚点跟着「上一次回复」走：同一次等待、同一个档位只记一条。
         anchor: typeof view.lastReplyAt === 'number' ? view.lastReplyAt : 0,
         status: 'stalled',
-        summary: trf(t, 'progress.entry', { turn: view.turn, activity: subject, duration: waiting }, '第 ' + view.turn + ' 轮 · ' + subject + ' · 等待 ' + waiting),
-        activity: activity,
+        summary: progressLocalSummary(digest, actions, t),
+        activity: actions.join('；'),
+        digest: {
+          reasoning: digest.reasoning,
+          actions: actions,
+        },
+        lang: lang === 'en' ? 'en' : 'zh',
+        windowMs: windowMs,
+        windowFromMs: digest.from,
+        windowToMs: digest.to,
+        turnStartedAt: typeof view.startedAt === 'number' ? view.startedAt : 0,
         elapsedMs: view.elapsedMs,
-        silenceMs: bucket * settings.stallMs,
+        silenceMs: bucket * windowMs,
         steps: view.steps,
         at: Date.now(),
       }
@@ -1597,7 +1786,7 @@ window.__ModuleLoader__.load({
         var key = view.turn + ':' + view.lastReplyAt + ':' + progressBucket
         if (reportedBuckets.current[key] === true) return
         reportedBuckets.current[key] = true
-        requestProgress(sessionId, progressEntryOf(view, cfg, t)).catch(function () {
+        requestProgress(sessionId, progressEntryOf(view, cfg, t, entries, activeUiLang())).catch(function () {
           // 失败不重试；下一个间隔继续。
         })
       }, [progressBucket, sessionId, view.turn, view.lastReplyAt])
@@ -2142,10 +2331,15 @@ window.__ModuleLoader__.load({
       function progressDetail(item) {
         var elapsed = formatDuration(item.elapsedMs, t)
         var silence = formatDuration(item.silenceMs, t)
+        var interval = progressIntervalText(item, t)
         return h('div', { key: 'detail', className: 'wdxh-detail' }, [
           typeof item.turn === 'number' ? h('p', { key: 'turn', className: 'wdxh-line' }, [
             h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'progress.turnLabel', '轮次')),
             trf(t, 'progress.turn', { turn: item.turn }, '第 ' + item.turn + ' 轮'),
+          ]) : null,
+          interval !== '' ? h('p', { key: 'interval', className: 'wdxh-line' }, [
+            h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'progress.intervalLabel', '时间窗')),
+            interval,
           ]) : null,
           h('p', { key: 'elapsed', className: 'wdxh-line' }, [
             h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'progress.elapsedLabel', '总耗时')),
@@ -2160,7 +2354,7 @@ window.__ModuleLoader__.load({
             String(item.steps),
           ]) : null,
           item.activity ? h('p', { key: 'activity', className: 'wdxh-line' }, [
-            h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'progress.current', '现在')),
+            h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'progress.actions', '本段动作')),
             item.activity,
           ]) : null,
         ])
@@ -2187,6 +2381,7 @@ window.__ModuleLoader__.load({
         var key = recapItemKey(item)
         var open = openKey === key
         var isProgress = item.kind === 'progress'
+        var interval = isProgress ? progressIntervalText(item, t) : ''
         return h('li', { key: key, className: 'wdxp-item' }, [
           h('button', {
             key: 'row',
@@ -2202,6 +2397,7 @@ window.__ModuleLoader__.load({
                   ? tr(t, 'panel.recapTagLocal', '本地摘要')
                   : tr(t, 'panel.recapTagSummary', '摘要'))),
             h('span', { key: 'text', className: 'wdxp-rowText' }, item.summary),
+            interval !== '' ? h('span', { key: 'interval', className: 'wdxp-rowInterval' }, interval) : null,
             h('span', { key: 'time', className: 'wdxp-rowMeta' }, formatRecapTime(item.at)),
           ]),
           open ? (isProgress ? progressDetail(item) : recapDetail(item)) : null,
@@ -3338,16 +3534,35 @@ window.__ModuleLoader__.load({
 
       var boundT = typeof ctx.locale.bind === 'function' ? ctx.locale.bind(NS) : function (key) { return key }
 
-      /** 从输入框上方那一行跳到「会话回顾」并筛选出进度记录。 */
-      function openProgressTab() {
+      /** 打开右侧 WDX Relief 面板；params 可选，用来落到指定筛选。 */
+      function openReliefTab(params) {
         try {
           var sidebar = ctx.sidebarRight || (typeof ctx.get === 'function' ? ctx.get('sidebarRight') : undefined)
           if (sidebar && typeof sidebar.openTab === 'function') {
-            sidebar.openTab(RELIEF_TAB, { params: { wdxReliefTab: 'recaps', wdxRecapFilter: 'progress' } })
+            sidebar.openTab(RELIEF_TAB, params ? { params: params } : undefined)
           }
         } catch (error) {
-          console.warn('[wdx-relief] open progress tab failed', error)
+          console.warn('[wdx-relief] open panel failed', error)
         }
+      }
+
+      /** 从输入框上方那一行跳到「会话回顾」并筛选出进度记录。 */
+      function openProgressTab() {
+        openReliefTab({ wdxReliefTab: 'recaps', wdxRecapFilter: 'progress' })
+      }
+
+      /** 顶栏入口：和 wdx-git 的按钮并排，点一下打开右侧面板。 */
+      function HeaderReliefButton() {
+        var label = boundT('panel.open')
+        return h(React.Fragment, null,
+          h('style', { key: 'wdx-relief-header-css', 'data-plugin-css': NS + ':header' }, HEADER_CSS),
+          h('button', {
+            type: 'button',
+            className: 'wdxr-headerBtn',
+            title: label,
+            'aria-label': label,
+            onClick: function () { openReliefTab() },
+          }, h(ReliefIcon, { size: 16 })))
       }
 
       ctx.effect(function () {
@@ -3365,6 +3580,16 @@ window.__ModuleLoader__.load({
           }],
         })
       }, 'wdx-relief: sidebar page')
+
+      // 顶栏按钮：order 12 紧跟在 wdx-git 的 11 后面。
+      ctx.slots.inject('conversation.session.header.utilities', function () {
+        return ctx.slots.register({
+          name: 'conversation.session.header.utilities',
+          id: 'wdx-relief',
+          order: 12,
+          label: function () { return boundT('panel.open') },
+        }, HeaderReliefButton)
+      })
 
       ctx.slots.inject('sidebar.right.pane.tab', function () {
         return ctx.slots.register({
@@ -3489,6 +3714,8 @@ window.__ModuleLoader__.load({
     exports.lineSettings = lineSettings
     exports.groupRecapEntries = groupRecapEntries
     exports.progressEntryOf = progressEntryOf
+    exports.collectProgressDigest = collectProgressDigest
+    exports.progressIntervalText = progressIntervalText
     exports.turnStatusInfo = turnStatusInfo
     exports.buildTurnSegments = buildTurnSegments
     exports.activityText = activityText

@@ -14,7 +14,7 @@ After a turn, grey text in the composer guesses what you are about to send. Pres
 
 A per-turn line that answers "what is this turn doing, and where is it", always above the composer:
 
-- **Live progress** (on by default): after the configured interval without a reply to you (10 minutes by default), the line appears automatically with the turn number, latest action and waiting time; from then on it records one progress entry per interval in Session review. Tool calls and reasoning only refresh the "no output" check; they are not replies and do not reset this timer. A status chip — running / no output / done / cancelled — keeps it distinct from the finished recap.
+- **Live progress** (on by default): after the configured interval without a reply to you (10 minutes by default), the line appears automatically with the turn number and waiting time; from then on it records one idea summary per interval in Session review — a cheap model writes what that window was solving and how far it got, with commands and parameters left out, and on failure the client-local summary is kept. Tool calls and reasoning only refresh the "no output" check; they are not replies and do not reset this timer. A status chip — running / no output / done / cancelled — keeps it distinct from the finished recap.
 - **Semantic recap** (on by default): a cheap model summarizes the latest turn every turn. The Host takes the snapshot and generates it at `turn/end`, so a turn is recorded even when the panel is closed, you switched sessions, or the page reloaded; a client request for the same turn shares that one model call.
 - **Activity feed**: generated locally with zero model calls, off by default.
 
@@ -22,9 +22,9 @@ The line never enters the model context; recaps and progress entries are kept in
 
 ### WDX Relief panel
 
-A right-sidebar page with two tabs, defaulting to Session review (configurable):
+A right-sidebar page with two tabs, defaulting to Session review (configurable); the session-header icon (next to WDX Git) opens it directly:
 
-- **Session review**: entries grouped by turn, with each turn's progress entries and recap together; the collapsible header shows the turn, counts, end time and turn duration. If any of the last N turns (3 by default, configurable under advanced settings) ends on a question or a "next step / you need" line, the group is marked "Follow up" and the filter can show only those turns. Switch between Newest first and Oldest first; filter by All / Summaries / Progress / Follow up; refresh every 30 seconds; confirm before clearing. Progress entries are derived locally with no model calls.
+- **Session review**: entries grouped by turn, with each turn's progress entries and recap together; the collapsible header shows the turn, counts, end time and turn duration. If any of the last N turns (3 by default, configurable under advanced settings) ends on a question or a "next step / you need" line, the group is marked "Follow up" and the filter can show only those turns. Switch between Newest first and Oldest first; filter by All / Summaries / Progress / Follow up; refresh every 30 seconds; confirm before clearing. Each progress row shows the cumulative window (the second entry reads "min 1–20"); the idea summary is written by the Host with a cheap model, falling back to the client-local summary when the model fails.
 - **Ask aside**: a composer-style card with its own model picker. The Q&A stays in the panel — not in the session, not in the command log, not in the model context, and it does not change the main session model.
 
 ### Reply style
@@ -50,7 +50,7 @@ In the DSH sidebar, go to **Plugins → Add plugin**, enter `dsh-wdx-relief`, th
 ## Requirements and limits
 
 - DSH Web profile; the plugin depends on the `connection`, `sessions`, and `tools` services.
-- A default model must be configured. Prediction, the semantic recap, and Ask aside make model calls; the activity feed, progress entries and the Follow up marker do not. The tool-call guard is zero-cost until it fires, then costs at most one extra model step (bounded by the correction limit).
+- A default model must be configured. Prediction, the semantic recap, progress summaries, and Ask aside make model calls; the activity feed and the Follow up marker do not. The tool-call guard is zero-cost until it fires, then costs at most one extra model step (bounded by the correction limit).
 - Reply style is a soft prompt constraint, not a hard length limit.
 - Recaps are stored locally in `$DSH_HOME/wdx-relief/recaps.json` (up to 300 entries); Clear in the panel also drops the current-turn cache, and deleting the file clears the history.
 - Ask aside keeps answers in panel memory only; closing the panel or switching sessions clears them.
