@@ -163,8 +163,9 @@ window.__ModuleLoader__.load({
       '@media (hover:hover){.wdxp-row:hover{background:var(--dsw-alias-interactive-bg-hover)}}',
       '.wdxp-row:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:-1px}',
       '.wdxp-rowText{overflow-wrap:anywhere;white-space:normal;flex:1;min-width:0;font-size:13px;line-height:19px}',
-      '.wdxp-rowInterval{color:var(--dsw-alias-label-tertiary);white-space:nowrap;font-variant-numeric:tabular-nums;flex:none;padding-left:4px;font-size:10px;line-height:19px}',
-      '.wdxp-rowMeta{color:var(--dsw-alias-label-caption);white-space:nowrap;font-variant-numeric:tabular-nums;flex:none;font-size:11px;line-height:19px}',
+      '.wdxp-rowMetaCol{flex-direction:column;align-items:flex-end;flex:none;gap:0;display:flex}',
+      '.wdxp-rowInterval{color:var(--dsw-alias-label-tertiary);white-space:nowrap;font-variant-numeric:tabular-nums;flex:none;margin-top:1px;font-size:10px;line-height:11px}',
+      '.wdxp-rowMeta{color:var(--dsw-alias-label-caption);white-space:nowrap;font-variant-numeric:tabular-nums;flex:none;margin-top:2px;font-size:11px;line-height:15px}',
       '.wdxp-note{color:var(--dsw-alias-label-tertiary);align-items:center;gap:6px;margin:2px 0 0;font-size:12px;line-height:18px;display:flex}',
       '.wdxp-link{color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;padding:0;font:inherit;font-size:12px;line-height:18px;text-decoration:underline;align-self:flex-start;text-align:left}',
       '@media (hover:hover){.wdxp-link:hover{color:var(--dsw-alias-label-primary)}}',
@@ -363,6 +364,8 @@ window.__ModuleLoader__.load({
       'progress.stepsLabel': '步数',
       'progress.interval': '第 {from}–{to} 分',
       'progress.intervalOne': '第 {minute} 分',
+      'progress.intervalShort': '{from}–{to} 分',
+      'progress.intervalOneShort': '{minute} 分',
       'progress.intervalLabel': '时间窗',
       'progress.doing': '在{actions}',
       'progress.actions': '本段动作',
@@ -543,6 +546,8 @@ window.__ModuleLoader__.load({
       'progress.stepsLabel': 'Steps',
       'progress.interval': 'min {from}–{to}',
       'progress.intervalOne': 'min {minute}',
+      'progress.intervalShort': '{from}–{to} min',
+      'progress.intervalOneShort': '{minute} min',
       'progress.intervalLabel': 'Window',
       'progress.doing': 'Working on {actions}',
       'progress.actions': 'Actions',
@@ -761,8 +766,12 @@ window.__ModuleLoader__.load({
       return (date.getMonth() + 1) + '/' + date.getDate() + ' ' + clock
     }
 
-    /** 进度条目覆盖的累计时间窗：「第 1–20 分」。旧记录没有 windowMs 时返回空。 */
-    function progressIntervalText(item, t) {
+    /**
+     * 进度条目覆盖的累计时间窗：「第 1–20 分」。旧记录没有 windowMs 时返回空。
+     * style 传 'short' 时去掉前缀，给列表右侧的小字用（完整说法留给展开详情）。
+     */
+    function progressIntervalText(item, t, style) {
+      var short = style === 'short'
       var bucket = Number(item && item.bucket)
       var windowMs = Number(item && item.windowMs)
       var turnStartedAt = Number(item && item.turnStartedAt)
@@ -784,8 +793,14 @@ window.__ModuleLoader__.load({
         to = bucket * span
       }
       if (to < 1) return ''
-      if (from === to) return trf(t, 'progress.intervalOne', { minute: to }, '第 ' + to + ' 分')
-      return trf(t, 'progress.interval', { from: from, to: to }, '第 ' + from + '–' + to + ' 分')
+      if (from === to) {
+        return short
+          ? trf(t, 'progress.intervalOneShort', { minute: to }, to + ' 分')
+          : trf(t, 'progress.intervalOne', { minute: to }, '第 ' + to + ' 分')
+      }
+      return short
+        ? trf(t, 'progress.intervalShort', { from: from, to: to }, from + '–' + to + ' 分')
+        : trf(t, 'progress.interval', { from: from, to: to }, '第 ' + from + '–' + to + ' 分')
     }
 
     // ---------------------------------------------------------- prediction
@@ -2381,7 +2396,7 @@ window.__ModuleLoader__.load({
         var key = recapItemKey(item)
         var open = openKey === key
         var isProgress = item.kind === 'progress'
-        var interval = isProgress ? progressIntervalText(item, t) : ''
+        var interval = isProgress ? progressIntervalText(item, t, 'short') : ''
         return h('li', { key: key, className: 'wdxp-item' }, [
           h('button', {
             key: 'row',
@@ -2397,8 +2412,10 @@ window.__ModuleLoader__.load({
                   ? tr(t, 'panel.recapTagLocal', '本地摘要')
                   : tr(t, 'panel.recapTagSummary', '摘要'))),
             h('span', { key: 'text', className: 'wdxp-rowText' }, item.summary),
-            interval !== '' ? h('span', { key: 'interval', className: 'wdxp-rowInterval' }, interval) : null,
-            h('span', { key: 'time', className: 'wdxp-rowMeta' }, formatRecapTime(item.at)),
+            h('span', { key: 'meta', className: 'wdxp-rowMetaCol' }, [
+              h('span', { key: 'time', className: 'wdxp-rowMeta' }, formatRecapTime(item.at)),
+              interval !== '' ? h('span', { key: 'interval', className: 'wdxp-rowInterval' }, interval) : null,
+            ]),
           ]),
           open ? (isProgress ? progressDetail(item) : recapDetail(item)) : null,
         ])

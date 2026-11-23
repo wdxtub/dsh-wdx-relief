@@ -934,6 +934,7 @@ test('recap history filters summaries and progress entries', () => {
   assert.match(json, /wdxp-group/)
   assert.match(json, /wdxp-groupHead/)
   assert.match(json, /wdxp-groupTime/)
+  assert.match(json, /wdxp-rowMetaCol/)
   assert.match(json, /第 2 轮/)
   assert.match(json, /进度 1/)
   assert.match(json, /最新在前/)
@@ -1428,13 +1429,19 @@ test('progress digest keeps only the current interval idea and strips command pa
   // 命令的具体参数不进入进度摘要。
   assert.equal(second.actions[0].target, '')
 
-  const labels = { 'progress.interval': '{from}–{to} 分', 'progress.intervalOne': '{minute} 分' }
+  const labels = {
+    'progress.interval': '{from}–{to} 分', 'progress.intervalOne': '{minute} 分',
+    'progress.intervalShort': '短 {from}–{to} 分', 'progress.intervalOneShort': '短 {minute} 分',
+  }
   const t = (key, params) => {
     let value = labels[key] ?? key
     for (const [name, text] of Object.entries(params ?? {})) value = value.replaceAll(`{${name}}`, String(text))
     return value
   }
   assert.equal(client.progressIntervalText({ bucket: 1, windowMs: 600000 }, t), '1–10 分')
+  // 列表右侧的小字用 short 口径：不带「第」，省地方。
+  assert.equal(client.progressIntervalText({ bucket: 1, windowMs: 600000 }, t, 'short'), '短 1–10 分')
+  assert.equal(client.progressIntervalText({ bucket: 2, windowMs: 600000 }, t, 'short'), '短 1–20 分')
   assert.equal(client.progressIntervalText({ bucket: 2, windowMs: 600000 }, t), '1–20 分')
   assert.equal(client.progressIntervalText({ bucket: 1 }, t), '')
   // 跳档或中途回复：按真实时间窗落在本轮的哪几分钟。
