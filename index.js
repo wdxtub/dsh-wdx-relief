@@ -344,6 +344,9 @@ export function apply(ctx, config) {
           && (item.anchor || 0) === anchor
           && item.bucket === bucket)
         if (duplicate) return { appended: false }
+        // 记录时间按「收到这一档的时刻」算。模型生成可能慢几十秒，用生成完成时间
+        // 会让面板上的两条进度看起来更挤，也会让组头「用时」偏长。
+        const capturedAt = Date.now()
         // 新客户端会带一段「这 10 分钟的思考/动作」；有 digest 时让 Host 用便宜模型
         // 写成叙述性进展。模型不可用或摘要功能关闭时保留客户端兜底文案。
         const generated = entry.digest && typeof entry.digest === 'object'
@@ -368,7 +371,7 @@ export function apply(ctx, config) {
             windowToMs: Number(entry.windowToMs) || 0,
             turnStartedAt: Number(entry.turnStartedAt) || 0,
             generated: generated !== null,
-            at: Date.now(),
+            at: capturedAt,
           }),
         }
       }),

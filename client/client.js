@@ -1674,8 +1674,41 @@ window.__ModuleLoader__.load({
         elapsedMs: view.elapsedMs,
         silenceMs: bucket * windowMs,
         steps: view.steps,
-        at: Date.now(),
       }
+    }
+
+    /**
+     * 当前档位是不是「刚跨过去」。
+     *
+     * 只按 `floor(quietMs / stallMs)` 判断的话，切回会话、整页刷新、从休眠或
+     * 后台唤醒后第一次看到的档位往往已经过去一大半；这时立刻记一条，下一条
+     * 边界可能几十秒后就到，同一轮里就会出现两条只隔一两分钟的进度。
+     *
+     * 所以只有距档位起点不超过「间隔的一半，且不超过 1 分钟」才记（正常每秒
+     * tick 时是 0–1 秒，后台节流到 1 分钟一次也还赶得上）；已经过期的档位直接
+     * 跳过，等下一档。相邻两条因此至少隔「间隔 - 容差」。
+     */
+    function progressWindowOf(quietMs, stallMs) {
+      var span = Math.max(1, Number(stallMs) || 1)
+      var quiet = Math.max(0, Number(quietMs) || 0)
+      var bucket = Math.floor(quiet / span)
+      var offset = quiet - bucket * span
+      var tolerance = Math.max(1000, Math.min(60000, Math.floor(span / 2)))
+      return { bucket: bucket, fresh: bucket >= 1 && offset <= tolerance }
+    }
+
+    /**
+     * 这一秒该不该记一条进度；该记时返回档位和去重键，不该记时返回 null。
+     * 同一次等待、同一个档位只发一次：键里带 turn + 上一次回复时间和档位。
+     */
+    function progressDueOf(view, cfg, reported) {
+      if (!view || view.running !== true || view.turn === 0) return null
+      if (!cfg || cfg.progress !== true) return null
+      var window = progressWindowOf(view.quietMs, cfg.stallMs)
+      if (!window.fresh) return null
+      var key = view.turn + ':' + view.lastReplyAt + ':' + window.bucket
+      if (reported && reported[key] === true) return null
+      return { bucket: window.bucket, key: key }
     }
 
     var RECAP_SEP = ' · '
@@ -1795,12 +1828,15 @@ window.__ModuleLoader__.load({
       var stickyProgress = due || (view.running && waitedTurn === view.turn)
 
       // 超过一个间隔还没回复，就往「会话回顾」记一条进度；同一轮同一次等待同一档只发一次。
-      var progressBucket = view.running && cfg.progress ? Math.floor(view.quietMs / cfg.stallMs) : 0
+      // 只记「刚跨过去」的档位：切回会话、刷新、从休眠唤醒时，当前档位常常已经
+      // 过了一大半，这时补记一条，下一条边界几十秒后就跟上，看起来像两条只隔 1 分钟。
+      var progressWindow = view.running && cfg.progress ? progressWindowOf(view.quietMs, cfg.stallMs) : null
+      var progressBucket = progressWindow === null ? 0 : progressWindow.bucket
       useEffect(function () {
-        if (progressBucket < 1 || !sessionId || view.turn === 0) return
-        var key = view.turn + ':' + view.lastReplyAt + ':' + progressBucket
-        if (reportedBuckets.current[key] === true) return
-        reportedBuckets.current[key] = true
+        if (!sessionId) return
+        var plan = progressDueOf(view, cfg, reportedBuckets.current)
+        if (plan === null) return
+        reportedBuckets.current[plan.key] = true
         requestProgress(sessionId, progressEntryOf(view, cfg, t, entries, activeUiLang())).catch(function () {
           // 失败不重试；下一个间隔继续。
         })
@@ -3731,6 +3767,8 @@ window.__ModuleLoader__.load({
     exports.lineSettings = lineSettings
     exports.groupRecapEntries = groupRecapEntries
     exports.progressEntryOf = progressEntryOf
+    exports.progressWindowOf = progressWindowOf
+    exports.progressDueOf = progressDueOf
     exports.collectProgressDigest = collectProgressDigest
     exports.progressIntervalText = progressIntervalText
     exports.turnStatusInfo = turnStatusInfo

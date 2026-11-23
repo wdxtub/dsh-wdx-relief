@@ -18,7 +18,7 @@ function assistantMessage(text) {
   return { role: 'assistant', content: [{ type: 'text', text }] }
 }
 
-function createHostContext(output = '修一下失败的测试') {
+function createHostContext(output = '修一下失败的测试', options = {}) {
   const session = {
     id: 'session-1',
     seq: 3,
@@ -48,7 +48,9 @@ function createHostContext(output = '修一下失败的测试') {
         return {
           stream() {
             llmCalls += 1
+            const delayMs = Number(options.delayMs) || 0
             return (async function* () {
+              if (delayMs > 0) await new Promise((resolve) => setTimeout(resolve, delayMs))
               yield { type: 'text-delta', text: output }
               yield { type: 'finish', reason: { kind: 'stop' } }
             })()
@@ -421,6 +423,40 @@ test('progress route keeps the local summary when the recap model is off', async
   const item = (await list.json()).data.items[0]
   assert.equal(item.summary, '先读配置，确认旧标签写在哪。')
   assert.equal(item.generated, false)
+})
+
+test('progress entries are stamped when the request arrives, not when the model finishes', async () => {
+  // 模型慢 300ms：旧实现用生成完成时间，面板上的记录时间会晚一截，
+  // 慢的那条还可能排到下一条后面；记录时间应该贴近请求到达的那一刻。
+  const host = createHostContext('迁移完成，等回归测试。', { delayMs: 300 })
+  apply(host.ctx, recapConfig())
+  const entry = {
+    turn: 3,
+    bucket: 5,
+    anchor: 1000,
+    status: 'stalled',
+    summary: '在改迁移脚本',
+    activity: '修改 migrate.js',
+    windowMs: 600000,
+    windowFromMs: 2400000,
+    windowToMs: 3000000,
+    turnStartedAt: 1000,
+    elapsedMs: 3000000,
+    silenceMs: 3000000,
+    steps: 3,
+    digest: { reasoning: '先改脚本再跑回归', actions: ['修改 migrate.js'], replies: '' },
+  }
+  const before = Date.now()
+  const response = await host.route(PROGRESS_PATH).fetch(request({ sessionId: 'session-1', entry }, PROGRESS_PATH))
+  assert.deepEqual(await response.json(), { ok: true, data: { appended: true } })
+  assert.equal(host.llmCalls(), 1)
+
+  const list = await host.route(RECAPS_PATH).fetch(request({ sessionId: 'session-1' }, RECAPS_PATH))
+  const item = (await list.json()).data.items[0]
+  assert.equal(item.generated, true)
+  assert.equal(item.summary, '迁移完成，等回归测试。')
+  const lag = item.at - before
+  assert.ok(lag >= 0 && lag < 250, `recorded ${lag}ms after the request`)
 })
 
 test('recap route respects the toggle and unknown sessions', async () => {
@@ -801,6 +837,118 @@ test('progress snapshots use the 10 minute bucket and stay compact', () => {
   assert.equal(second.bucket, 2)
   assert.equal(second.silenceMs, 1200000)
   assert.equal(second.windowMs, 600000)
+})
+
+test('progress records only right after a bucket boundary, never twice in a row', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+  const client = loaded.factory((id) => {
+    if (id === 'react') return { createElement() {}, useState() {}, useEffect() {}, useRef() {}, useLayoutEffect() {} }
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+
+  const stallMs = 600000
+  const cfg = { progress: true, stallMs }
+
+  // 切回会话 / 刷新 / 休眠唤醒时，当前这一档往往已经过了一大半：不记，等下一档。
+  const joinedLate = client.progressWindowOf(159 * 60000 + 30000, stallMs)
+  assert.equal(joinedLate.bucket, 15)
+  assert.equal(joinedLate.fresh, false)
+  // 档位刚跨过去的 1 分钟内记（后台节流到 1 分钟一次也赶得上）；再晚就跳过。
+  assert.equal(client.progressWindowOf(160 * 60000, stallMs).fresh, true)
+  assert.equal(client.progressWindowOf(160 * 60000 + 59000, stallMs).fresh, true)
+  assert.equal(client.progressWindowOf(160 * 60000 + 61000, stallMs).fresh, false)
+  assert.equal(client.progressWindowOf(0, stallMs).fresh, false)
+  // 同一次等待、同一个档位只记一条。
+  const reported = {}
+  const view = { running: true, turn: 3, lastReplyAt: 1000, quietMs: 160 * 60000 }
+  const plan = client.progressDueOf(view, cfg, reported)
+  assert.equal(plan.bucket, 16)
+  reported[plan.key] = true
+  assert.equal(client.progressDueOf(view, cfg, reported), null)
+  assert.equal(client.progressDueOf({ ...view, turn: 0 }, cfg, {}), null)
+  assert.equal(client.progressDueOf(view, { progress: false, stallMs }, {}), null)
+
+  // 按每秒一次 tick 走一遍：旧规则在 159.5 分补一条、30 秒后又跟一条；
+  // 新规则只在 160 分这一条边界上开始记，之后每 10 分钟一条。
+  function replay(rule, startQuietMs, seconds) {
+    const seen = {}
+    const recorded = []
+    for (let offset = 0; offset <= seconds; offset += 1) {
+      const quietMs = startQuietMs + offset * 1000
+      const item = rule(quietMs, seen)
+      if (item === null) continue
+      seen[item.key] = true
+      recorded.push(quietMs)
+    }
+    return recorded
+  }
+  const oldRule = (quietMs, seen) => {
+    const bucket = Math.floor(quietMs / stallMs)
+    if (bucket < 1) return null
+    const key = '3:' + (1000) + ':' + bucket
+    if (seen[key] === true) return null
+    return { bucket, key }
+  }
+  const newRule = (quietMs, seen) => client.progressDueOf({ running: true, turn: 3, lastReplyAt: 1000, quietMs }, cfg, seen)
+
+  const late = 159 * 60000 + 30000
+  const oldRun = replay(oldRule, late, 5 * 60)
+  assert.deepEqual(oldRun, [late, 160 * 60000])
+  const newRun = replay(newRule, late, 11 * 60)
+  assert.deepEqual(newRun, [160 * 60000, 170 * 60000])
+  for (let index = 1; index < newRun.length; index += 1) {
+    assert.equal(newRun[index] - newRun[index - 1], stallMs)
+  }
+})
+
+test('progress cadence stays at least one interval apart with throttled ticks', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+  const client = loaded.factory((id) => {
+    if (id === 'react') return { createElement() {}, useState() {}, useEffect() {}, useRef() {}, useLayoutEffect() {} }
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+
+  const stallMs = 600000
+  const cfg = { progress: true, stallMs }
+  let seed = 7
+  const random = () => {
+    seed = (seed * 1103515245 + 12345) % 2147483648
+    return seed / 2147483648
+  }
+  // tick 节奏：前台 1 秒、后台节流 1 分钟、休眠唤醒后的 3 分钟大跳；
+  // 挂载点分别落在档位开头、中间和末尾。
+  for (const tickMs of [1000, 60000, 180000]) {
+    for (const mountOffset of [0, 30000, 300000, 540000 + 30000]) {
+      const seen = {}
+      const recorded = []
+      for (let quietMs = mountOffset; quietMs <= 40 * 60000; quietMs += tickMs + Math.floor(random() * tickMs)) {
+        const plan = client.progressDueOf({ running: true, turn: 2, lastReplyAt: 0, quietMs }, cfg, seen)
+        if (plan === null) continue
+        seen[plan.key] = true
+        recorded.push(quietMs)
+      }
+      for (let index = 1; index < recorded.length; index += 1) {
+        // 记录只在档位边界后 1 分钟内发生，所以相邻两条最近是「间隔 - 1 分钟」。
+        assert.ok(recorded[index] - recorded[index - 1] >= stallMs - 60000, `${tickMs}/${mountOffset}: ${recorded.join(',')}`)
+      }
+      for (const quietMs of recorded) {
+        assert.ok(quietMs % stallMs <= 60000, `${tickMs}/${mountOffset}: recorded mid-window at ${quietMs}`)
+      }
+      // 粗节流本来就可能整天错过边界，只有前台每秒 tick 必须稳定出记录，
+      // 否则「一条都不记」的实现也会让上面两个循环空转通过。
+      if (tickMs <= 1000) {
+        assert.ok(recorded.length >= 3, `${tickMs}/${mountOffset}: 只记录了 ${recorded.length} 条`)
+      }
+    }
+  }
 })
 
 
