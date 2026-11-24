@@ -29,6 +29,86 @@ function positiveInteger(value) {
   return Number.isInteger(number) && number >= 1 ? number : 0
 }
 
+/**
+ * 轮次编号应该随时间递增；上下文压缩会让 Host 的 countUserTurns 突然变小
+ * （44 → 13），旧记录里就出现「更晚的记录反而轮次更小」。这里在读取时
+ * 做一次只增不减的修正：晚于历史最大轮次的记录，若编号更小就顺延到最大 + 1。
+ * 后台任务条目（jobId / jobGrouped）故意沿用任务起点的轮次，跳过。
+ * @returns {boolean} 是否改动了内存里的记录
+ */
+function normalizeTurnLabels(list) {
+  let maxTurn = 0
+  let changed = false
+  const ordered = [...list].sort((left, right) => (left.at || 0) - (right.at || 0) || (left.seq || 0) - (right.seq || 0))
+  for (const item of ordered) {
+    if (!Number.isInteger(item.turn) || item.turn < 1) continue
+    if (typeof item.jobId === 'string' && item.jobId !== '') continue
+    if (item.jobGrouped === true) continue
+    // 进度条目的轮次来自客户端的 turn/start 事件，是可靠的；只修正摘要这类
+    // Host 用 countUserTurns 算出来的编号，别把延迟到达的进度也一起改掉。
+    if (item.kind === 'progress') {
+      if (item.turn > maxTurn) maxTurn = item.turn
+      continue
+    }
+    if (item.turn < maxTurn) {
+      item.turn = maxTurn + 1
+      changed = true
+    }
+    if (item.turn > maxTurn) maxTurn = item.turn
+  }
+  return changed
+}
+
+/** 旧版本没有 jobId，只能从 activity 文案认出这是后台任务进度。 */
+function isLegacyJobEntry(item) {
+  return item.kind === 'progress'
+    && typeof item.activity === 'string'
+    && /后台任务|background job/i.test(item.activity)
+}
+
+/**
+ * 旧版本的同一个后台任务会按「当时所在轮次」记进度，被拆到 44/46 等多个组。
+ * 同一任务起点（anchor）的条目统一收拢到最早的轮次，并打上 jobGrouped，
+ * 免得下一次 normalizeTurnLabels 又把它拆回去。
+ * @returns {boolean} 是否改动了内存里的记录
+ */
+function regroupJobEntries(list) {
+  const byAnchor = new Map()
+  for (const item of list) {
+    if (item.kind !== 'progress') continue
+    if (typeof item.jobId === 'string' && item.jobId !== '') {
+      item.jobGrouped = true
+      continue
+    }
+    if (!isLegacyJobEntry(item)) continue
+    const anchor = item.anchor || 0
+    if (anchor <= 0) continue
+    const bucket = byAnchor.get(anchor)
+    if (bucket === undefined) byAnchor.set(anchor, [item])
+    else bucket.push(item)
+  }
+  let changed = false
+  for (const [anchor, items] of byAnchor.entries()) {
+    let min = 0
+    for (const item of items) {
+      if (!Number.isInteger(item.turn) || item.turn < 1) continue
+      if (min === 0 || item.turn < min) min = item.turn
+    }
+    if (min === 0) continue
+    // 合成一个稳定的 jobId，旧条目在「会话回顾」里才能和后续条目合成一组。
+    const legacyId = `legacy-${anchor}`
+    for (const item of items) {
+      if (item.jobGrouped !== true) { item.jobGrouped = true; changed = true }
+      if (typeof item.jobId !== 'string' || item.jobId === '') {
+        item.jobId = legacyId
+        changed = true
+      }
+      if (item.turn !== min) { item.turn = min; changed = true }
+    }
+  }
+  return changed
+}
+
 export function createRecapHistory({ file, maxEntries = MAX_ENTRIES, log = () => {} }) {
   let entries = null
 
@@ -40,6 +120,10 @@ export function createRecapHistory({ file, maxEntries = MAX_ENTRIES, log = () =>
     } catch {
       entries = []
     }
+    // 旧数据的轮次修正（压缩后的低编号、任务被拆到多个轮次组）在读取时完成；
+    // 下一次 append 的 save 会把结果写回文件。只改内存也不会影响本次显示。
+    normalizeTurnLabels(entries)
+    regroupJobEntries(entries)
     return entries
   }
 
@@ -74,6 +158,9 @@ export function createRecapHistory({ file, maxEntries = MAX_ENTRIES, log = () =>
           turn,
           bucket,
           anchor,
+          jobId: text(entry.jobId, 80),
+          jobName: text(entry.jobName, 120),
+          jobGoal: text(entry.jobGoal, 200),
           status: entry.status === 'running' ? 'running' : 'stalled',
           at: typeof entry.at === 'number' ? entry.at : Date.now(),
           summary,
@@ -145,6 +232,48 @@ export function createRecapHistory({ file, maxEntries = MAX_ENTRIES, log = () =>
     list(sessionId, limit = maxEntries) {
       if (typeof sessionId !== 'string' || sessionId === '') return []
       return load().filter((item) => item.sessionId === sessionId).slice(-limit).reverse()
+    },
+
+    /**
+     * 同一个任务起点（anchor）已经记过的轮次：取最早的一条，后续条目都用它。
+     * 顺便把旧条目收拢到这个轮次，返回 0 表示还没有记录。
+     */
+    jobTurnFor(sessionId, anchor, jobId = '') {
+      if (typeof sessionId !== 'string' || sessionId === '') return 0
+      if (!Number.isFinite(anchor) || anchor <= 0) return 0
+      const items = load().filter((item) => item.kind === 'progress'
+        && item.sessionId === sessionId
+        && (item.anchor || 0) === anchor
+        && Number.isInteger(item.turn)
+        && item.turn >= 1)
+      if (items.length === 0) return 0
+      let min = 0
+      for (const item of items) {
+        if (min === 0 || item.turn < min) min = item.turn
+      }
+      let changed = false
+      for (const item of items) {
+        if (item.jobGrouped !== true) { item.jobGrouped = true; changed = true }
+        // 旧条目（legacy-<anchor>）遇到真实 jobId 后统一改名，同一个任务只留一组。
+        if (jobId !== '' && item.jobId !== jobId) { item.jobId = jobId; changed = true }
+        if (item.turn !== min) { item.turn = min; changed = true }
+      }
+      if (changed) save()
+      return min
+    },
+
+    /** 同一个任务最早记下的「本轮目标」，给后续摘要保持上下文一致。 */
+    jobGoalFor(sessionId, anchor) {
+      if (typeof sessionId !== 'string' || sessionId === '') return ''
+      if (!Number.isFinite(anchor) || anchor <= 0) return ''
+      let best = null
+      for (const item of load()) {
+        if (item.kind !== 'progress' || item.sessionId !== sessionId) continue
+        if ((item.anchor || 0) !== anchor) continue
+        if (typeof item.jobGoal !== 'string' || item.jobGoal === '') continue
+        if (best === null || (item.at || 0) < (best.at || 0)) best = item
+      }
+      return best === null ? '' : best.jobGoal
     },
 
     clear(sessionId) {

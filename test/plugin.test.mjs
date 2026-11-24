@@ -366,6 +366,54 @@ test('progress route appends one snapshot per turn and bucket', async () => {
 })
 
 
+test('job progress stays under the turn that started the job', async () => {
+  const host = createHostContext()
+  apply(host.ctx, recapConfig({ recap: false }))
+  const route = host.route(PROGRESS_PATH)
+  const anchor = 1795479188145
+  const base = {
+    anchor: anchor,
+    jobId: 'bash-1',
+    jobName: 'bash 任务',
+    status: 'running',
+    activity: '后台任务 1 个运行中',
+    summary: '关于「把两个人群补齐」：后台任务运行中',
+    digest: {
+      reasoning: '',
+      actions: [],
+      goal: '把两个人群补齐',
+      jobs: [{ name: 'bash 任务', status: 'running', elapsedMinutes: 5 }],
+    },
+  }
+  const first = await route.fetch(request({ sessionId: 'session-1', entry: { ...base, turn: 46, bucket: 1 } }, PROGRESS_PATH))
+  assert.deepEqual(await first.json(), { ok: true, data: { appended: true } })
+  // 任务跑了很久，客户端现在已经在第 50 轮；进度仍然回到第 46 轮。
+  const later = await route.fetch(request({
+    sessionId: 'session-1',
+    entry: { ...base, turn: 50, bucket: 2, digest: { ...base.digest, goal: '最新一轮的要求' } },
+  }, PROGRESS_PATH))
+  assert.deepEqual(await later.json(), { ok: true, data: { appended: true } })
+
+  const list = await host.route(RECAPS_PATH).fetch(request({ sessionId: 'session-1' }, RECAPS_PATH))
+  const items = (await list.json()).data.items.filter((item) => item.jobId === 'bash-1')
+  assert.deepEqual([...items.map((item) => item.turn)], [46, 46])
+  assert.equal(items.every((item) => item.jobName === 'bash 任务'), true)
+  // 后续条目沿用任务最初的目标，不会被新回合的要求覆盖。
+  assert.deepEqual([...new Set(items.map((item) => item.jobGoal))], ['把两个人群补齐'])
+})
+
+test('recap labels use the client turn after history compression', async () => {
+  const host = createHostContext('补一句摘要')
+  apply(host.ctx, recapConfig())
+  const route = host.route(RECAP_PATH)
+  const response = await route.fetch(request({ sessionId: 'session-1', turn: 46 }, RECAP_PATH))
+  const data = (await response.json()).data
+  assert.equal(data.recap.turn, 46)
+  const list = await host.route(RECAPS_PATH).fetch(request({ sessionId: 'session-1' }, RECAPS_PATH))
+  const items = (await list.json()).data.items
+  assert.equal(items[0].turn, 46)
+})
+
 test('progress route replaces the local preview with a model-written interval summary', async () => {
   const host = createHostContext('先确认刷新会覆盖哪些手工改动，再按时间窗整批迁移。')
   apply(host.ctx, recapConfig())
@@ -999,6 +1047,157 @@ test('progress fires while tools keep running without a reply', () => {
   assert.equal(repliedView.silenceMs, 150000)
 })
 
+test('progress stays quiet while the turn waits for the user', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+  const client = loaded.factory((id) => {
+    if (id === 'react') return { createElement() {}, useState() {}, useEffect() {}, useRef() {}, useLayoutEffect() {} }
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+  const t = (key) => key
+  const entries = [
+    { type: 'event', event: { type: 'turn/start', seq: 1, time: 1000, data: { turn: 4 } } },
+    { type: 'event', event: { type: 'step/start', seq: 2, time: 1000, data: { turn: 4, step: 1 } } },
+    { type: 'event', event: { type: 'tool/call', seq: 3, time: 2000, data: { callId: 'c9', name: 'ask_user_question', arguments: JSON.stringify({ questions: [{ id: 'q1', question: '要现在跑吗？' }] }), turn: 4, step: 1 } } },
+  ]
+  const waiting = client.deriveTurnView(entries, 1300000)
+  assert.equal(waiting.awaiting, 'question')
+  assert.equal(waiting.askQuestion, '要现在跑吗？')
+  assert.equal(client.progressDueOf(waiting, { progress: true, stallMs: 600000 }, {}), null)
+  assert.equal(client.turnStatusInfo(waiting, t, true).label, '等你回答')
+  // 这一档里只有「提问」发生在上一个窗口，本窗口没有任何模型活动。
+  const quietEntry = client.progressEntryOf(waiting, { stallMs: 600000 }, t, entries)
+  assert.equal(quietEntry.events, 0)
+
+  // 用户答了（回执先到），等待结束；工具结果再回来也不影响。
+  const replied = [...entries, {
+    type: 'event',
+    event: { type: 'user/message', seq: 4, time: 1300000, data: { message: { role: 'user', source: { kind: 'user-question-reply', callId: 'c9' }, content: [{ type: 'text', text: '跑吧' }] } } },
+  }]
+  const answered = client.deriveTurnView(replied, 1301000)
+  assert.equal(answered.awaiting, '')
+  assert.equal(answered.askQuestion, '')
+  const resumed = [...replied, { type: 'event', event: { type: 'tool/result', seq: 5, time: 1302000, data: { turn: 4, step: 1, message: { source: { callId: 'c9' } } } } }]
+  assert.equal(client.deriveTurnView(resumed, 1310000).awaiting, '')
+
+  // 审批事件：决定前算等待，决定后恢复正常。
+  const approvals = [
+    { type: 'event', event: { type: 'turn/start', seq: 1, time: 1000, data: { turn: 5 } } },
+    { type: 'event', event: { type: 'approval/asked', seq: 2, time: 1500, data: { id: 'a1', tool: 'bash' } } },
+  ]
+  const asked = client.deriveTurnView(approvals, 800000)
+  assert.equal(asked.awaiting, 'approval')
+  assert.equal(client.progressDueOf(asked, { progress: true, stallMs: 600000 }, {}), null)
+  const decided = [...approvals, { type: 'event', event: { type: 'approval/decided', seq: 3, time: 800000, data: { id: 'a1', outcome: 'allowed-once' } } }]
+  assert.equal(client.deriveTurnView(decided, 800100).awaiting, '')
+})
+
+test('background jobs surface their latest output and record progress', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+  const client = loaded.factory((id) => {
+    if (id === 'react') return { createElement() {}, useState() {}, useEffect() {}, useRef() {}, useLayoutEffect() {} }
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+  const t = (key) => key
+  const jobStart = 1000000
+  const now = jobStart + 7 * 3600 * 1000 + 46 * 60 * 1000
+  const rows = [
+    { id: 'bash-1', kind: 'bash', label: 'while pgrep -f monitor; do', status: 'running', startedAt: jobStart, progress: '3/10', output: { total: 2048, earliest: 0 } },
+    { id: 'bash-2', kind: 'bash', label: 'done job', status: 'completed', startedAt: 900000, output: { total: 0, earliest: 0 } },
+    { id: 'bash-3', kind: 'bash', label: 'stopping job', status: 'stopping', startedAt: jobStart + 60000, output: { total: 10, earliest: 0 } },
+  ]
+  const jobs = client.liveJobsOf(rows, now)
+  assert.equal(jobs.length, 2)
+  assert.equal(jobs[0].id, 'bash-1')
+  assert.equal(jobs[1].id, 'bash-3')
+  assert.equal(client.liveJobsOf(null, now).length, 0)
+
+  assert.equal(client.jobOutputLine('\u001b[32mstarting\u001b[0m\r\n[12:00] scanned 100 rows\n'), '[12:00] scanned 100 rows')
+  assert.equal(client.jobOutputLine(''), '')
+  assert.equal(
+    client.jobOutputTail('\u001b[32mstart\u001b[0m\nline 1\nline 2\nline 3\n', 600, 3),
+    'line 1\nline 2\nline 3',
+  )
+  const lineText = client.jobOutputLine('正在扫描第 3/10 批…')
+  jobs[0].line = lineText
+  jobs[0].tail = '已扫完第 2 批，共命中 120 条\n第 3 批扫描中'
+  jobs[0].outputTotal = 2048
+
+  // 展示名：命令式 label 换成「bash 任务」，短标签保留。
+  assert.equal(client.jobDisplayName({ label: '/Users/someone/run.sh --full', kind: 'bash' }, t), 'bash 任务')
+  assert.equal(client.jobDisplayName({ label: '跑 10 轮压测', kind: 'bash' }, t), '跑 10 轮压测')
+  assert.equal(client.jobDisplayName({ label: '', kind: '' }, t), '后台任务')
+
+  // 会话上下文：这一轮用户要什么。
+  // 真实日志形状：turn/start → step/start → user/message（内容直接挂在 data 上），
+  // 之后才是 runtime-context / skill-catalog 这类注入消息。
+  const goalEntries = [
+    { type: 'event', event: { type: 'turn/start', seq: 1, time: 990000, data: { turn: 45 } } },
+    { type: 'event', event: { type: 'step/start', seq: 2, time: 990010, data: { turn: 45, step: 1 } } },
+    { type: 'event', event: { type: 'user/message', seq: 3, time: 990020, data: { role: 'user', id: 'u1', source: { kind: 'user', rpcId: 'r1' }, content: [{ type: 'text', text: '把科创债 ETF 世界的两个人群补齐，跑完把结果带回来' }] } } },
+    { type: 'event', event: { type: 'user/message', seq: 4, time: 990030, data: { role: 'user', id: 'u2', source: { kind: 'runtime-context' }, content: [{ type: 'text', text: 'Current working directory: …' }] } } },
+    { type: 'event', event: { type: 'user/message', seq: 5, time: 1100000, data: { role: 'user', id: 'u3', source: { kind: 'user' }, content: [{ type: 'text', text: '进度呢' }] } } },
+  ]
+  // 中途追问不能顶掉出发点的请求。
+  assert.equal(client.jobGoalOf(goalEntries, 45), '把科创债 ETF 世界的两个人群补齐，跑完把结果带回来')
+  const goal = client.jobGoalOf(goalEntries, 45)
+  assert.equal(goal, '把科创债 ETF 世界的两个人群补齐，跑完把结果带回来')
+  assert.equal(client.jobGoalOf(goalEntries, 46), '')
+  assert.equal(client.jobGoalOf([]), '')
+
+  const view = { turn: 45, startedAt: 990000, running: false }
+  const entry = client.jobProgressEntryOf(jobs, view, { stallMs: 600000 }, t, 'zh', now, goal)
+  assert.equal(entry.turn, 45)
+  assert.equal(entry.status, 'running')
+  assert.equal(entry.anchor, jobStart)
+  assert.equal(entry.bucket, Math.floor((now - jobStart) / 600000))
+  assert.equal(entry.digest.jobs.length, 2)
+  assert.equal(entry.digest.jobs[0].elapsedMinutes, 466)
+  assert.equal(entry.digest.jobs[0].line, '正在扫描第 3/10 批…')
+  assert.match(entry.summary, /关于「把科创债 ETF 世界的两个人群补齐/)
+  assert.match(entry.summary, /while pgrep -f monitor; do/)
+  assert.match(entry.summary, /已运行 7 小时 46 分/)
+  assert.match(entry.summary, /正在扫描第 3\/10 批…/)
+  assert.equal(entry.silenceMs, 0)
+  assert.equal(entry.digest.goal, goal)
+  assert.equal(entry.jobId, 'bash-1')
+  assert.equal(entry.jobName, 'while pgrep -f monitor; do')
+  assert.equal(entry.jobGoal, goal)
+  assert.equal(entry.digest.jobs[0].name, 'while pgrep -f monitor; do')
+  assert.equal(entry.digest.jobs[0].tail, '已扫完第 2 批，共命中 120 条\n第 3 批扫描中')
+  assert.equal(client.jobProgressEntryOf([], view, { stallMs: 600000 }, t, 'zh', now), null)
+  assert.equal(client.jobProgressEntryOf(jobs, { turn: 0 }, { stallMs: 600000 }, t, 'zh', now), null)
+
+  const segment = client.jobSegmentText(jobs, t, false)
+  assert.match(segment, /后台任务 2 个仍在运行/)
+  assert.match(segment, /已运行 7 小时 46 分/)
+  assert.match(segment, /最近输出：正在扫描第 3\/10 批…/)
+  assert.equal(client.jobSegmentText([], t, true), '')
+
+  const segments = client.buildTurnSegments({ ...view, running: true }, { progress: true, stallMs: 600000, activity: false, summary: true, jobs: true }, t, null, null, jobs)
+  assert.deepEqual([...segments.map((item) => item.key)], ['progress', 'jobs'])
+  const off = client.buildTurnSegments({ ...view, running: true }, { progress: true, stallMs: 600000, activity: false, summary: true, jobs: false }, t, null, null, jobs)
+  assert.deepEqual([...off.map((item) => item.key)], ['progress'])
+
+  // 只在「本轮结束」或「停在等你回答」时单独记后台任务进度。
+  const cfg = { progress: true, jobs: true, stallMs: 600000 }
+  assert.equal(client.jobProgressDueOf(view, cfg, now + 600000, now), true)
+  assert.equal(client.jobProgressDueOf(view, cfg, now + 300000, now), false)
+  assert.equal(client.jobProgressDueOf({ ...view, running: true, awaiting: '' }, cfg, now + 600000, now), false)
+  assert.equal(client.jobProgressDueOf({ ...view, running: true, awaiting: 'question' }, cfg, now + 600000, now), true)
+  assert.equal(client.jobProgressDueOf({ ...view, running: true, awaiting: 'approval' }, cfg, now + 600000, now), true)
+  assert.equal(client.jobProgressDueOf(view, { ...cfg, progress: false }, now + 600000, now), false)
+  assert.equal(client.jobProgressDueOf(view, { ...cfg, jobs: false }, now + 600000, now), false)
+  assert.equal(client.jobProgressDueOf({ ...view, turn: 0 }, cfg, now + 600000, now), false)
+})
+
 test('recap entries group by turn and support both orders', () => {
   const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
   let loaded = null
@@ -1016,21 +1215,37 @@ test('recap entries group by turn and support both orders', () => {
     { sessionId: 's', seq: 2, kind: 'progress', turn: 1, at: 2000, bucket: 2, anchor: 900, summary: 'p2' },
     { sessionId: 's', seq: 4, kind: 'progress', turn: 2, at: 4000, bucket: 1, anchor: 3500, elapsedMs: 3000, summary: 'p3' },
     { sessionId: 's', seq: 5, kind: 'answered', turn: 2, at: 5000, summary: 'r2' },
+    // 第 1 轮的任务进度跑到很晚：组仍按轮次排，不按最后时间浮到第 2 轮上面。
+    { sessionId: 's', seq: 6, kind: 'progress', turn: 1, at: 9000, bucket: 3, anchor: 900, summary: 'p-late' },
     { sessionId: 's', seq: 9, kind: 'answered', turn: null, at: 500, summary: 'old' },
   ]
 
   const desc = client.groupRecapEntries(items, 'desc')
   assert.deepEqual([...desc.map((group) => group.key)], ['t:2', 't:1', 'u'])
   assert.deepEqual([...desc[0].entries.map((item) => item.summary)], ['r2', 'p3'])
-  assert.deepEqual([...desc[1].entries.map((item) => item.summary)], ['r1', 'p2', 'p1'])
+  assert.deepEqual([...desc[1].entries.map((item) => item.summary)], ['p-late', 'r1', 'p2', 'p1'])
   assert.equal(desc[1].firstAt, 1000)
-  assert.equal(desc[1].lastAt, 3000)
+  assert.equal(desc[1].lastAt, 9000)
   assert.equal(desc[0].firstAt, 1000)
 
   const asc = client.groupRecapEntries(items, 'asc')
   assert.deepEqual([...asc.map((group) => group.key)], ['t:1', 't:2', 'u'])
-  assert.deepEqual([...asc[0].entries.map((item) => item.summary)], ['p1', 'p2', 'r1'])
+  assert.deepEqual([...asc[0].entries.map((item) => item.summary)], ['p1', 'p2', 'r1', 'p-late'])
   assert.deepEqual([...asc[1].entries.map((item) => item.summary)], ['p3', 'r2'])
+
+  // 同一个任务的进度单独成组，组头的时长说成「任务已运行」，不冒充某一轮的用时。
+  const jobItems = [
+    { sessionId: 's', seq: 1, kind: 'progress', turn: 44, at: 2000, bucket: 1, anchor: 900, jobId: 'bash-1', jobName: 'bash 任务', elapsedMs: 8 * 3600 * 1000, summary: 'j1' },
+    { sessionId: 's', seq: 2, kind: 'progress', turn: 44, at: 3000, bucket: 2, anchor: 900, jobId: 'bash-1', jobName: 'bash 任务', elapsedMs: 8.1 * 3600 * 1000, summary: 'j2' },
+    { sessionId: 's', seq: 3, kind: 'answered', turn: 44, at: 2500, summary: 'r44' },
+  ]
+  const jobGroups = client.groupRecapEntries(jobItems, 'desc')
+  assert.equal(jobGroups[0].key, 'j:bash-1')
+  assert.equal(jobGroups[0].isJob, true)
+  assert.equal(jobGroups[0].jobName, 'bash 任务')
+  assert.deepEqual([...jobGroups[0].entries.map((item) => item.summary)], ['j2', 'j1'])
+  assert.equal(jobGroups[1].key, 't:44')
+  assert.match(client.recapGroupTime(jobGroups[0], (key) => key), /任务已运行 8 小时/)
 })
 
 test('recap history filters summaries and progress entries', () => {
@@ -1154,10 +1369,12 @@ test('line settings default to a 10 minute progress interval', () => {
 
   const defaults = client.lineSettings(undefined)
   assert.equal(defaults.progress, true)
+  assert.equal(defaults.jobs, true)
   assert.equal(defaults.stallMs, 600000)
 
-  const configured = client.lineSettings({ value: { recapProgress: false, recapStallSeconds: '90', recapActivity: true, recap: false } })
+  const configured = client.lineSettings({ value: { recapProgress: false, recapStallSeconds: '90', recapActivity: true, recap: false, recapJobs: false } })
   assert.equal(configured.progress, false)
+  assert.equal(configured.jobs, false)
   assert.equal(configured.stallMs, 90000)
   assert.equal(configured.activity, true)
   assert.equal(configured.summary, false)

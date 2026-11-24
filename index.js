@@ -52,7 +52,11 @@ export const Config = Schema.object({
   recapProgress: Schema.boolean()
     .default(true)
     .volatile()
-    .description('一轮跑久了还没给用户回复时，按设置的间隔用便宜模型写一条这段时间的思路与进展（默认 10 分钟），失败退回本地摘要；整合进右侧栏的「会话回顾」，不单开 Tab'),
+    .description('一轮跑久了还没给用户回复、且有新的动作或后台任务输出时，按设置的间隔用便宜模型写一条这段时间的思路与进展（默认 10 分钟），失败退回本地摘要；整合进右侧栏的「会话回顾」，不单开 Tab'),
+  recapJobs: Schema.boolean()
+    .default(true)
+    .volatile()
+    .description('本轮结束或停在等你回答、而后台任务还在跑时，读取它的最新输出并结合本轮上下文写成一条进度；没有新输出就不记'),
   recapStallSeconds: Schema.number()
     .default(600)
     .volatile()
@@ -250,7 +254,10 @@ export function apply(ctx, config) {
       // 子会话的每一轮都补摘要只会刷屏，也不在用户看的会话列表里。
       if (header && header.origin === 'subagent') return
       const messages = session.deriveMessages()
-      const turn = countUserTurns(messages)
+      const eventTurn = event && event.data && Number.isInteger(event.data.turn) && event.data.turn >= 1 ? event.data.turn : 0
+      // 上下文压缩后 deriveMessages 会变短，countUserTurns 会突然变小；优先用 turn/end
+      // 事件自带的轮次，保证摘要和进度条目落在同一个轮次组里。
+      const turn = eventTurn > 0 ? eventTurn : countUserTurns(messages)
       const recap = buildRecap(messages)
       if (turn < 1 || recap === null) return
       recapService.recapCaptured(sessionId, { turn, recap }).catch((error) => {
@@ -290,7 +297,7 @@ export function apply(ctx, config) {
       path: RECAP_PATH,
       methods: ['POST'],
       requestBody: 'buffered',
-      fetch: (request) => handleRequest(request, (sessionId, signal) => recapService.recap(sessionId, signal)),
+      fetch: (request) => handleRequest(request, (sessionId, signal, body) => recapService.recap(sessionId, signal, body.turn)),
     })
     const disposeRecaps = ctx.connection.fetch.register({
       path: RECAPS_PATH,
@@ -329,16 +336,28 @@ export function apply(ctx, config) {
           throw error
         }
         const entry = body && typeof body.entry === 'object' && body.entry !== null ? body.entry : body
-        const turn = Number(entry.turn)
+        const requestedTurn = Number(entry.turn)
         const bucket = Number(entry.bucket)
         const summary = typeof entry.summary === 'string' ? entry.summary.slice(0, 500) : ''
-        if (!Number.isInteger(turn) || turn < 1 || !Number.isInteger(bucket) || bucket < 1 || summary.trim() === '') {
+        if (!Number.isInteger(requestedTurn) || requestedTurn < 1 || !Number.isInteger(bucket) || bucket < 1 || summary.trim() === '') {
           const error = new Error('turn, bucket and summary are required')
           error.code = 'invalid-params'
           throw error
         }
-        // 页面刷新后客户端可能重发同一档；历史里已有就不再调一次模型。
         const anchor = Number(entry.anchor) || 0
+        const jobId = typeof entry.jobId === 'string' ? entry.jobId.slice(0, 80) : ''
+        const jobName = typeof entry.jobName === 'string' ? entry.jobName.slice(0, 120) : ''
+        // 同一个后台任务的进度都落在它启动的那一轮：客户端每次可能处在不同轮次，
+        // 历史里按任务起点（anchor）找到最早的轮次并沿用；旧条目也一并收拢，
+        // 免得同一个任务在回顾里被拆到好几个轮次组。
+        let turn = requestedTurn
+        if (jobId !== '') {
+          const priorTurn = recapHistory.jobTurnFor(sessionId, anchor, jobId)
+          if (priorTurn > 0) turn = priorTurn
+          const originGoal = recapHistory.jobGoalFor(sessionId, anchor)
+          if (originGoal !== '' && entry.digest && typeof entry.digest === 'object') entry.digest.goal = originGoal
+        }
+        // 页面刷新后客户端可能重发同一档；历史里已有就不再调一次模型。
         const duplicate = recapHistory.list(sessionId).some((item) => item.kind === 'progress'
           && item.turn === turn
           && (item.anchor || 0) === anchor
@@ -360,6 +379,9 @@ export function apply(ctx, config) {
             turn,
             bucket,
             anchor,
+            jobId,
+            jobName,
+            jobGoal: entry.digest && typeof entry.digest.goal === 'string' ? entry.digest.goal.slice(0, 200) : '',
             status: entry.status === 'running' ? 'running' : 'stalled',
             summary: generated !== null ? generated.summary : summary,
             activity: typeof entry.activity === 'string' ? entry.activity.slice(0, 300) : '',

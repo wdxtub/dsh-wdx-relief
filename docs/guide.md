@@ -33,6 +33,7 @@ HMR 生效。
 | `enabled` | `true` | 输入框预测开关 |
 | `recap` | `true` | 语义摘要开关：每轮用一次便宜模型写「现在到哪」 |
 | `recapProgress` | `true` | 实时进度开关：按设置的间隔（默认 10 分钟）把一条这个时间窗的思路摘要合并进「会话回顾」；用便宜模型写成，失败退回本地摘要 |
+| `recapJobs` | `true` | 后台任务进度开关：本轮结束或停在等回答、后台任务还在跑时，读它的最新输出并结合本轮上下文写一条说明，按同一间隔更新；只在有新输出时更新 |
 | `recapStallSeconds` | `600` | 进度记录间隔（秒），60–3600 |
 | `pendingTurns` | `3` | 「待跟进」窗口：最近 N 轮，1–20；高级设置 |
 | `recapActivity` | `false` | 活动流水开关：读文件 / 跑命令 / 改代码，本地生成 |
@@ -62,6 +63,7 @@ bundle 层只声明入口和输入层的开关，其余字段由 schema 默认�
         enabled: true
         recap: true
         recapProgress: true
+        recapJobs: true
         recapStallSeconds: 600
         pendingTurns: 3
         defaultTab: recaps
@@ -241,6 +243,18 @@ Host 在 `ctx.systemPrompt` 注册：
 - 面板默认展示「会话回顾」Tab，旁问模型位读取 `ctx.modelDirectories`，选中只影响旁问；
 - `node --test` 覆盖回顾提取 / minTurns / cooldown / 相似度门限 / 模型链、旁问提示词/回答/错误/模型覆盖、今日清单、客户端事件推导与注册面；
 - 浏览器内实际轮次切换、两种 placement、旁问 Tab 与 Markdown 渲染尚未在本次会话中用浏览器控制复核。
+
+## 0.10.0 验证
+
+- 空窗口不再记进度：`collectProgressDigest` 增加 `events` 计数，客户端在 `events === 0` 时不发请求；单测覆盖「等用户回答」与「等审批」两种等待、以及提问回执/审批决定后的恢复。
+- 状态条在等待时显示「等你回答 / 待批准」；`progressDetail` 在 `silenceMs` 为 0 时不再渲染「未回复 0 秒」。
+- 后台任务：客户端注入 `readJobs`（`ctx.get('jobs')`，`dsh-api-job-controller` 提供的 `job.list` / `job.follow`），`TurnRecapDock` 订阅 roster、对每个 running/stopping 任务开观测流，并按任务起点分档写进度；`jobProgressDueOf` 只在本轮结束或停在等回答时放行，避免和轮次进度重复。
+- 任务摘要结合上下文：客户端从事件窗口取本轮用户要求（`jobGoalOf`）放进 `digest.goal`，命令式 label 过滤成「bash 任务」（`jobDisplayName`），输出取最近 6 行/≤600 字（`jobOutputTail`）；Host 再从会话取本轮最后回复，`buildProgressPrompt` 中英文都带「本轮目标 / 本轮最后回复 / 还在跑的后台任务」段，只有任务、没有思考/动作时也会调用便宜模型，失败仍退回带「关于「本轮要求」」前缀的本地摘要。
+- 轮次编号：Host 兜底改用 `turn/end` 事件里的 turn，客户端 `/recap` 带上 `view.turn`，避免上下文压缩后 `countUserTurns` 变小导致摘要跳到低轮次。
+- 任务归属：progress 条目新增 `jobId` / `jobName` / `jobGoal`；Host 用 `jobTurnFor(anchor)` 取最早轮次并沿用，`jobGoalFor(anchor)` 保持最初的目标；`recapHistory` 读取时修正压缩造成的低编号、并把同 anchor 的旧任务条目收拢到最早轮次（`jobGrouped` 防回弹）。
+- 分组顺序：`groupRecapEntries` 把带 `jobId` 的条目单独分到「后台任务 · 名称」组（旧条目由 Host 合成 `legacy-<anchor>` id），轮次组按轮次排序（同轮内按时间）；`recapGroupTime` 在任务组显示「任务已运行 …」。
+- `node --test` 143 项通过（新增轮次修正/任务收拢/任务分组/路由归属用例）。
+- 浏览器内实际刷新后的 roster 订阅、观测流与行渲染尚未在本次会话中用浏览器控制复核；需要在有运行中后台任务的会话里刷新页面确认。
 
 ## 已知限制
 

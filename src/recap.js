@@ -57,6 +57,13 @@ function clip(value, maxChars) {
   return `${text.slice(0, maxChars).trim()}…`
 }
 
+/** 保留行结构的尾部截断：任务输出按行解释，压成一行会丢信息。 */
+function clipBlock(value, maxChars) {
+  const text = String(value ?? '').replace(/\s*\n\s*/g, '\n').trim()
+  if (text.length <= maxChars) return text
+  return `…${text.slice(-maxChars).trim()}`
+}
+
 /** 保留最近的思考，而不是时间窗开头；长思考里越靠后越接近当前进展。 */
 function clipTail(value, maxChars) {
   const text = String(value ?? '').replace(/\s+/g, ' ').trim()
@@ -541,28 +548,29 @@ export function buildProgressSystemPrompt(maxWords = DEFAULT_PROGRESS_WORDS, lan
   if (lang === 'en') {
     return [
       'You are writing the interval progress of an AI coding session that is still running, so someone returning can catch up in three seconds.',
-      'The input has the turn goal, reasoning fragments from this window, and tool actions with arguments removed.',
-      'Write 1-2 English sentences: what this window was solving, the approach, and how far it got or where it is stuck.',
+      'The input has the turn goal, reasoning fragments from this window, and tool actions with arguments removed; when background jobs run, it also names each job with its own progress line and last few output lines.',
+      'Write 1-2 English sentences: what this window was solving, the approach, and how far it got or where it is stuck; for a running background job, connect the turn goal with its output to explain what it is doing for the user, how far it has got, and whether it looks healthy, instead of only quoting output.',
       'When prior progress is provided, spend half a sentence on the cumulative state and focus on what is new in this window.',
-      'Do not list commands, arguments, file paths or tool names; do not copy the reasoning verbatim; do not use "I", "you" or "assistant"; output only that text.',
+      'Do not list commands, arguments, file paths or tool names; do not quote output verbatim; do not copy the reasoning verbatim; do not use "I", "you" or "assistant"; output only that text.',
       `Limit: at most ${maxWords} words.`,
     ].join('\n')
   }
   return [
     '你在给一个仍在运行的 AI 编程会话写「这段时间的进展」，帮刚回来的人三秒内接上。',
-    '输入包含本轮目标、这段时间的思考片段和去掉参数的工具动作。',
-    '输出 1–2 句中文：这段时间在解决什么问题、用了什么思路、推进到哪或卡在哪。',
+    '输入包含本轮目标、这段时间的思考片段和去掉参数的工具动作；如果有后台任务，还会给出任务名、它自己的进度和最近几行输出。',
+    '输出 1–2 句中文：这段时间在解决什么问题、用了什么思路、推进到哪或卡在哪；后台任务在跑时，结合本轮目标说清它在为你做什么、推进到哪、是否正常，不要只复述输出。',
     '如果给了「此前进展」，用半句点出累计状态，重点写最近这个时间窗的新进展。',
-    '不要罗列命令、参数、文件路径或工具名；不要照抄思考原文；不出现「我」「你」「助手」；只输出这段文字。',
+    '不要罗列命令、参数、文件路径或工具名；不要逐字复述输出；不要照抄思考原文；不出现「我」「你」「助手」；只输出这段文字。',
     `限制：不超过 ${maxWords} 个字。`,
   ].join('\n')
 }
 
-/** @param {{ goal?: string, previous?: string, fromMinute?: number, toMinute?: number, reasoning?: string, actions?: string[] }} progress */
+/** @param {{ goal?: string, turnReply?: string, previous?: string, fromMinute?: number, toMinute?: number, newFromMinute?: number, reasoning?: string, actions?: string[], jobs?: Array<{ name?: string, kind?: string, status?: string, progress?: string, elapsedMinutes?: number, tail?: string, line?: string }> }} progress */
 export function buildProgressPrompt(progress, lang = 'zh') {
   const english = lang === 'en'
   const lines = []
   if (progress.goal) lines.push(english ? `Turn goal: ${clip(progress.goal, 300)}` : `本轮目标：${clip(progress.goal, 300)}`)
+  if (progress.turnReply) lines.push(english ? `Last reply to the user: ${clip(progress.turnReply, 300)}` : `本轮最后回复：${clip(progress.turnReply, 300)}`)
   const from = positiveInt(progress.fromMinute, 1)
   const to = positiveInt(progress.toMinute, from)
   const newFrom = Math.min(to, positiveInt(progress.newFromMinute, from))
@@ -581,6 +589,31 @@ export function buildProgressPrompt(progress, lang = 'zh') {
     ? progress.actions.filter((item) => typeof item === 'string' && item !== '').slice(0, 12)
     : []
   if (actions.length > 0) lines.push(english ? `Actions: ${actions.join('; ')}` : `动作：${actions.join('；')}`)
+  const jobs = Array.isArray(progress.jobs) ? progress.jobs.slice(0, 3) : []
+  if (jobs.length > 0) {
+    lines.push(english ? 'Background jobs still running (explain them in plain language):' : '还在跑的后台任务（请用人话解释）：')
+    for (const job of jobs) {
+      const name = clip(job.name, 80) || (english ? 'background job' : '后台任务')
+      const kind = clip(job.kind, 20)
+      const state = clip(job.status, 20) || 'running'
+      const minutes = Number.isFinite(job.elapsedMinutes) ? Math.max(0, Math.round(job.elapsedMinutes)) : 0
+      const progressLine = clip(job.progress, 80)
+      // 老客户端没有 tail 时退回最后一行，保证输出总能进 prompt。
+      const tail = clipBlock(job.tail || job.line, 600)
+      const stateText = english
+        ? state
+        : (state === 'running' ? '运行中' : (state === 'stopping' ? '正在停止' : state))
+      const head = english
+        ? `- ${name}${kind === '' ? '' : ` [${kind}]`} (${state}, ${minutes} min)`
+        : `- ${name}${kind === '' ? '' : `（${kind}）`}（${stateText}，已运行 ${minutes} 分钟）`
+      lines.push(head)
+      if (progressLine !== '') lines.push(english ? `  its progress: ${progressLine}` : `  任务自己的进度：${progressLine}`)
+      if (tail !== '') {
+        lines.push(english ? '  recent output:' : '  最近输出：')
+        for (const line of tail.split('\n').slice(-6)) lines.push(`  ${line}`)
+      }
+    }
+  }
   return lines.join('\n')
 }
 
@@ -604,6 +637,33 @@ export async function generateProgressSummary({ llm, defaultSelection, progress,
     log,
     acceptSalvage: false,
   })
+}
+
+/** 后台任务摘要输入：只收路由允许的字段，避免任意对象进 prompt。 */
+function progressJobsOf(value) {
+  if (!Array.isArray(value)) return []
+  const jobs = []
+  for (const item of value.slice(0, 3)) {
+    if (item === null || typeof item !== 'object') continue
+    const name = typeof item.name === 'string'
+      ? item.name.slice(0, 80)
+      : (typeof item.label === 'string' ? item.label.slice(0, 80) : '')
+    const kind = typeof item.kind === 'string' ? item.kind.slice(0, 20) : ''
+    const status = typeof item.status === 'string' ? item.status.slice(0, 20) : ''
+    const progress = typeof item.progress === 'string' ? item.progress.slice(0, 80) : ''
+    const line = typeof item.line === 'string' ? item.line.slice(0, 300) : ''
+    const tail = typeof item.tail === 'string' ? item.tail.slice(-600) : ''
+    const elapsedMinutes = Number.isFinite(item.elapsedMinutes) ? Math.max(0, Math.round(item.elapsedMinutes)) : 0
+    if (name === '' && status === '' && line === '' && tail === '') continue
+    jobs.push({ name, kind, status, progress, line, tail, elapsedMinutes })
+  }
+  return jobs
+}
+
+/** 客户端传来的轮次：只接受正整数。 */
+function positiveTurn(value) {
+  const number = Number(value)
+  return Number.isInteger(number) && number >= 1 ? number : 0
 }
 
 function recapKey(turn, recap) {
@@ -725,7 +785,7 @@ export function createRecapService({ config, sessions, llm, defaultSelection, hi
      * 返回 { recap, turn, cached?, skipped?, kept?, degraded?, model? }。
      * 业务失败抛错，由 HTTP 层转成 ok:false。
      */
-    async recap(sessionId, signal) {
+    async recap(sessionId, signal, requestedTurn) {
       if (typeof sessionId !== 'string' || sessionId === '') {
         const error = new Error('sessionId is required')
         error.code = 'invalid-params'
@@ -749,7 +809,11 @@ export function createRecapService({ config, sessions, llm, defaultSelection, hi
         return { recap: null, turn: 0 }
       }
 
-      const turn = countUserTurns(messages)
+      // 轮次优先用调用方给的 turn（客户端从 turn/start 事件拿到的编号）。
+      // deriveMessages 在上下文压缩后会变短，countUserTurns 会从 44 掉到 13，
+      // 导致同一会话里的摘要轮次来回跳；只有拿不到事件轮次时才退回计数。
+      const eventTurn = positiveTurn(requestedTurn)
+      const turn = eventTurn > 0 ? eventTurn : countUserTurns(messages)
       const recap = buildRecap(messages)
       if (recap === null) return { recap: null, turn }
 
@@ -796,21 +860,30 @@ export function createRecapService({ config, sessions, llm, defaultSelection, hi
       if (!settings.enabled) return null
       const digest = entry && entry.digest && typeof entry.digest === 'object' ? entry.digest : null
       if (digest === null) return null
-      // 这段时间既没有思考也没有动作时，模型只能编泛泛的话；保留本地「没有新输出」。
+      // 这段时间既没有思考、动作，也没有后台任务输出时，模型只能编泛泛的话；
+      // 保留客户端本地摘要（路由会用 entry.summary 兜底）。
       const reasoning = typeof digest.reasoning === 'string' ? digest.reasoning.trim() : ''
       const actions = Array.isArray(digest.actions) ? digest.actions.filter((item) => typeof item === 'string' && item !== '') : []
-      if (reasoning === '' && actions.length === 0) return null
+      const jobs = progressJobsOf(digest.jobs)
+      if (reasoning === '' && actions.length === 0 && jobs.length === 0) return null
 
       const session = sessions.get(sessionId)
       if (session === undefined) return null
 
       let goal = ''
+      let turnReply = ''
       try {
         const recap = buildRecap(session.deriveMessages())
         goal = recap && typeof recap.user === 'string' ? recap.user : ''
+        // 本轮最后给用户的回复常常写着「跑完我会带结果回来」这类承诺，拿来解释后台任务最有用。
+        if (jobs.length > 0 && recap && typeof recap.assistant === 'string') turnReply = recap.assistant
       } catch {
         goal = ''
+        turnReply = ''
       }
+      // 客户端从事件窗口取到的「这一轮用户要什么」比会话最后一条用户消息更贴近这个窗口。
+      const digestGoal = typeof digest.goal === 'string' ? digest.goal.trim() : ''
+      if (digestGoal !== '') goal = digestGoal
 
       const bucket = positiveInt(Number(entry.bucket), 1)
       const windowMs = positiveInt(Number(entry.windowMs), 600000)
@@ -856,12 +929,14 @@ export function createRecapService({ config, sessions, llm, defaultSelection, hi
         defaultSelection,
         progress: {
           goal,
+          turnReply,
           previous,
           fromMinute,
           newFromMinute,
           toMinute,
           reasoning,
           actions,
+          jobs,
         },
         lang: entry.lang === 'en' ? 'en' : 'zh',
         chain: settings.chain,

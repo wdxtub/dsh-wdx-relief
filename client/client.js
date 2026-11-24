@@ -90,15 +90,18 @@ window.__ModuleLoader__.load({
       '@media (prefers-reduced-motion:reduce){.wdxt-row{animation:none}}',
       '.wdxt-row[data-state="running"]{border-color:var(--dsw-alias-state-business-tertiary)}',
       '.wdxt-row[data-state="stalled"]{border-color:var(--dsw-alias-state-warn-secondary)}',
+      '.wdxt-row[data-state="waiting"]{border-color:var(--dsw-alias-state-warn-secondary)}',
       '.wdxt-seg{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}',
       '.wdxt-progress{color:var(--dsw-alias-label-tertiary);flex:0 1 auto;min-width:0;font-variant-numeric:tabular-nums}',
       '.wdxt-progressStalled{color:var(--dsw-alias-state-warn-label)}',
       '.wdxt-activity{color:var(--dsw-alias-label-tertiary);flex:0 1 auto;max-width:46%}',
+      '.wdxt-jobs{color:var(--dsw-alias-state-business-primary);flex:0 1 auto;max-width:52%}',
       '.wdxt-summary{color:var(--dsw-alias-label-secondary);flex:1 1 auto;min-width:0}',
       '.wdxt-sep{color:var(--dsw-alias-border-l3);flex:none}',
       '.wdxt-status{box-sizing:border-box;height:18px;border-radius:999px;flex:none;align-items:center;gap:4px;padding:0 6px;font-size:11px;line-height:16px;display:inline-flex;border:.5px solid var(--dsw-alias-border-l2);white-space:nowrap}',
       '.wdxt-status[data-kind="running"]{color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-bg-base)}',
       '.wdxt-status[data-kind="stalled"]{color:var(--dsw-alias-state-warn-label);border-color:var(--dsw-alias-state-warn-secondary);background:var(--dsw-alias-bg-base)}',
+      '.wdxt-status[data-kind="waiting"]{color:var(--dsw-alias-state-warn-label);border-color:var(--dsw-alias-state-warn-secondary);background:var(--dsw-alias-bg-base)}',
       '.wdxt-status[data-kind="done"]{color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-base)}',
       '.wdxt-status[data-kind="error"]{color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-secondary);background:var(--dsw-alias-bg-base)}',
       '.wdxt-status[data-kind="aborted"],.wdxt-status[data-kind="interrupted"],.wdxt-status[data-kind="forked"]{color:var(--dsw-alias-label-caption);background:var(--dsw-alias-bg-base)}',
@@ -259,6 +262,8 @@ window.__ModuleLoader__.load({
       'settings.pendingTurns.description': '在「会话回顾」里把最近这么多轮的问题/下一步标成待跟进；默认 3',
       'settings.recapActivity.title': '活动流水',
       'settings.recapActivity.description': '正在读文件、跑命令、改代码；本地生成，零模型调用（默认关闭）',
+      'settings.recapJobs.title': '后台任务进度',
+      'settings.recapJobs.description': '本轮结束或停在等你回答、而后台任务还在跑时，读取它的最新输出并结合本轮上下文写成一条进度；没有新输出就不记',
       'settings.advanced': '高级（一般不用改）',
       'settings.advancedHide': '收起高级设置',
       'settings.recapModelChain.title': '摘要模型链',
@@ -284,6 +289,8 @@ window.__ModuleLoader__.load({
       'turn.tool': '调用工具…',
       'turn.status.running': '进行中',
       'turn.status.stalled': '无新输出',
+      'turn.status.answer': '等你回答',
+      'turn.status.approval': '待批准',
       'turn.status.done': '已完成',
       'turn.status.aborted': '已取消',
       'turn.status.error': '出错',
@@ -347,8 +354,11 @@ window.__ModuleLoader__.load({
       'panel.recapOrderDesc': '最新在前',
       'panel.recapOrderAsc': '最早在前',
       'panel.recapGroupProgress': '进度 {count}',
+      'panel.recapJobGroup': '后台任务 · {name}',
+      'panel.recapJobGroupGeneric': '后台任务',
       'panel.recapGroupSummary': '摘要 {count}',
       'panel.recapGroupSpan': '{time} · 用时 {duration}',
+      'panel.recapGroupJobTime': '{time} · 任务已运行 {duration}',
       'panel.recapPending': '待跟进',
       'panel.recapFilterPending': '待跟进',
       'panel.recapPendingCount': '{count} 轮',
@@ -370,8 +380,20 @@ window.__ModuleLoader__.load({
       'progress.doing': '在{actions}',
       'progress.actions': '本段动作',
       'progress.noOutput': '这段时间没有新输出',
+      'progress.activityOnly': '在推进，暂无新的说明',
       'progress.command': '运行命令',
       'progress.open': '查看进度',
+      'progress.jobsRunning': '后台任务 {count} 个运行中',
+      'progress.jobsRunningOne': '后台任务运行中',
+      'progress.jobsStillRunning': '后台任务 {count} 个仍在运行',
+      'progress.jobsStillRunningOne': '后台任务仍在运行',
+      'progress.jobAbout': '关于「{goal}」：',
+      'progress.jobGeneric': '后台任务',
+      'progress.jobKindName': '{kind} 任务',
+      'progress.jobRunningLabel': '「{label}」还在运行',
+      'progress.jobElapsed': '已运行 {duration}',
+      'progress.jobLastOutput': '最近输出：{line}',
+      'progress.jobNoOutput': '还没有输出',
       'section.btw': '旁问',
       'btw.placeholder': '问点什么…',
       'btw.ask': '问',
@@ -441,6 +463,8 @@ window.__ModuleLoader__.load({
       'settings.pendingTurns.description': 'Mark questions / next steps from this many recent turns as Follow up in Session review; default 3',
       'settings.recapActivity.title': 'Activity stream',
       'settings.recapActivity.description': 'Reading files, running commands, editing code; local, no model call (off by default)',
+      'settings.recapJobs.title': 'Background job progress',
+      'settings.recapJobs.description': 'While a background job from this turn still runs after the turn ended or while you are answering, read its latest output and explain it in the turn context once per interval; nothing new means no entry',
       'settings.advanced': 'Advanced (rarely needed)',
       'settings.advancedHide': 'Hide advanced settings',
       'settings.recapModelChain.title': 'Summary model chain',
@@ -466,6 +490,8 @@ window.__ModuleLoader__.load({
       'turn.tool': 'Running a tool…',
       'turn.status.running': 'Running',
       'turn.status.stalled': 'No output',
+      'turn.status.answer': 'Waiting for you',
+      'turn.status.approval': 'Waiting for approval',
       'turn.status.done': 'Done',
       'turn.status.aborted': 'Cancelled',
       'turn.status.error': 'Failed',
@@ -529,8 +555,11 @@ window.__ModuleLoader__.load({
       'panel.recapOrderDesc': 'Newest first',
       'panel.recapOrderAsc': 'Oldest first',
       'panel.recapGroupProgress': 'Progress {count}',
+      'panel.recapJobGroup': 'Background job · {name}',
+      'panel.recapJobGroupGeneric': 'Background job',
       'panel.recapGroupSummary': 'Summaries {count}',
       'panel.recapGroupSpan': '{time} · {duration}',
+      'panel.recapGroupJobTime': '{time} · job running {duration}',
       'panel.recapPending': 'Follow up',
       'panel.recapFilterPending': 'Follow up',
       'panel.recapPendingCount': '{count} turns',
@@ -552,8 +581,20 @@ window.__ModuleLoader__.load({
       'progress.doing': 'Working on {actions}',
       'progress.actions': 'Actions',
       'progress.noOutput': 'No new output in this window',
+      'progress.activityOnly': 'Progressing, no new explanation yet',
       'progress.command': 'Run command',
       'progress.open': 'View progress',
+      'progress.jobsRunning': '{count} background jobs running',
+      'progress.jobsRunningOne': 'Background job running',
+      'progress.jobsStillRunning': '{count} background jobs still running',
+      'progress.jobsStillRunningOne': 'Background job still running',
+      'progress.jobAbout': 'For "{goal}": ',
+      'progress.jobGeneric': 'background job',
+      'progress.jobKindName': '{kind} job',
+      'progress.jobRunningLabel': '{label} is still running',
+      'progress.jobElapsed': 'running {duration}',
+      'progress.jobLastOutput': 'Latest output: {line}',
+      'progress.jobNoOutput': 'no output yet',
       'section.btw': 'Aside',
       'btw.placeholder': 'Ask anything…',
       'btw.ask': 'Ask',
@@ -632,12 +673,12 @@ window.__ModuleLoader__.load({
     }
 
     /** 一次回顾 RPC；空会话或失败都返回 null，调用方不显示任何东西。 */
-    async function requestRecap(sessionId, signal) {
+    async function requestRecap(sessionId, turn, signal) {
       var response = await fetch(RECAP_PATH, {
         method: 'POST',
         credentials: 'same-origin',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ sessionId: sessionId }),
+        body: JSON.stringify({ sessionId: sessionId, turn: Number.isInteger(turn) ? turn : undefined }),
         signal: signal,
       })
       var body
@@ -1220,6 +1261,27 @@ window.__ModuleLoader__.load({
       return typeof data.turn === 'number' ? data.turn : 0
     }
 
+    /**
+     * `ask_user_question` 的参数里要展示给用户的那句问题。
+     * 兼容单问（question）和批量（questions[0].question）两种形状。
+     */
+    function askQuestionOf(rawArguments) {
+      var args = parseArguments(rawArguments)
+      if (typeof args.question === 'string' && args.question.trim() !== '') return clipText(args.question, 120)
+      var questions = Array.isArray(args.questions) ? args.questions : []
+      for (var index = 0; index < questions.length; index += 1) {
+        var item = objectOf(questions[index])
+        if (typeof item.question === 'string' && item.question.trim() !== '') return clipText(item.question, 120)
+      }
+      return ''
+    }
+
+    /** 一条消息是不是「用户回答提问」的回执；这类回执代表用户已经答了，等待结束。 */
+    function isQuestionReply(message) {
+      var source = message && message.source
+      return Boolean(source && typeof source === 'object' && source.kind === 'user-question-reply')
+    }
+
     /** turn/end 的 reason 归一成界面状态；未知或旧格式按正常结束处理。 */
     function turnStatusOfReason(reason) {
       var kind = reason && typeof reason.kind === 'string' ? reason.kind : ''
@@ -1280,7 +1342,7 @@ window.__ModuleLoader__.load({
           }
         }
         if (anchor === -1) {
-          return { turn: 0, running: false, startedAt: 0, elapsedMs: 0, lastEventAt: 0, silenceMs: 0, lastReplyAt: 0, quietMs: 0, endedAt: 0, endReason: null, status: 'idle', steps: 0, actions: [], tool: null, reasoning: '', phase: 'idle' }
+          return { turn: 0, running: false, startedAt: 0, elapsedMs: 0, lastEventAt: 0, silenceMs: 0, lastReplyAt: 0, quietMs: 0, endedAt: 0, endReason: null, status: 'idle', steps: 0, actions: [], tool: null, reasoning: '', phase: 'idle', awaiting: '', askQuestion: '' }
         }
         while (anchor > 0 && eventTurn(eventOf(list[anchor - 1])) === turn) anchor -= 1
       }
@@ -1296,6 +1358,11 @@ window.__ModuleLoader__.load({
       var tool = null
       var reasoning = ''
       var phase = 'thinking'
+      // 等待用户：提问工具还没回结果就是等你回答；审批事件还在等就是等批准。
+      // 这两段时间没有任何模型活动，进度记录要静默。
+      var openAskId = ''
+      var askQuestion = ''
+      var pendingApproval = false
 
       for (var cursor = anchor; cursor < list.length; cursor += 1) {
         var event = eventOf(list[cursor])
@@ -1318,18 +1385,35 @@ window.__ModuleLoader__.load({
           actions.push(tool)
           reasoning = ''
           phase = 'tool'
+          if (described.verb === 'ask' || String(data.name || '') === 'ask_user_question') {
+            openAskId = typeof data.callId === 'string' ? data.callId : ''
+            askQuestion = askQuestionOf(data.arguments)
+          }
         } else if (event.type === 'tool/result') {
           var source = objectOf(objectOf(data.message).source)
           var resultId = source.callId
           if (typeof resultId === 'string') {
+            if (resultId === openAskId) {
+              openAskId = ''
+              askQuestion = ''
+            }
             for (var actionIndex = 0; actionIndex < actions.length; actionIndex += 1) {
               if (actions[actionIndex].callId === resultId) actions[actionIndex].done = true
             }
             if (tool !== null && resultId === tool.callId) phase = 'tool-done'
           } else if (tool !== null) {
+            // 结果里没带 callId（旧格式）时，只要当前工具就是提问，也当作回答已到。
+            if (tool.verb === 'ask') {
+              openAskId = ''
+              askQuestion = ''
+            }
             tool.done = true
             phase = 'tool-done'
           }
+        } else if (event.type === 'approval/asked') {
+          pendingApproval = true
+        } else if (event.type === 'approval/decided') {
+          pendingApproval = false
         } else if (event.type === 'assistant/live-chunk') {
           var chunk = objectOf(data.chunk)
           if (chunk.type === 'reasoning-delta') {
@@ -1354,6 +1438,12 @@ window.__ModuleLoader__.load({
           if (contentReasoning !== '') reasoning = contentReasoning
           if (hasReplyText(assistantMessage) && typeof event.time === 'number') lastReplyAt = event.time
           phase = 'answering'
+        } else if (event.type === 'user/message') {
+          // 用户回答后提问的等待就结束了；即便工具结果还没回来，也不再算「等你回答」。
+          if (isQuestionReply(messageOf(data))) {
+            openAskId = ''
+            askQuestion = ''
+          }
         } else if (event.type === 'turn/end') {
           endedAt = lastTime
           endReason = data.reason && typeof data.reason === 'object' ? data.reason : null
@@ -1368,6 +1458,9 @@ window.__ModuleLoader__.load({
       var silenceMs = running ? Math.max(0, nowMs - lastTime) : 0
       var quietMs = running ? Math.max(0, nowMs - lastReplyAt) : 0
       var status = running ? 'running' : (endReason === null ? 'interrupted' : turnStatusOfReason(endReason))
+      var awaiting = ''
+      if (running && pendingApproval) awaiting = 'approval'
+      else if (running && openAskId !== '') awaiting = 'question'
 
       return {
         turn: turn,
@@ -1386,6 +1479,8 @@ window.__ModuleLoader__.load({
         tool: tool,
         reasoning: latestReasoningLine(reasoning),
         phase: phase,
+        awaiting: awaiting,
+        askQuestion: awaiting === 'question' ? askQuestion : '',
       }
     }
 
@@ -1427,7 +1522,7 @@ window.__ModuleLoader__.load({
       var children = []
       if (props.kind === 'running') {
         children.push(h('span', { key: 'dot', className: 'wdxt-dot' }))
-      } else if (props.kind === 'stalled') {
+      } else if (props.kind === 'stalled' || props.kind === 'waiting') {
         children.push(h('span', { key: 'dot', className: 'wdxt-dotStatic' }))
       } else if (props.kind === 'done') {
         children.push(h('span', { key: 'check', className: 'wdxt-check', 'aria-hidden': 'true' }, '✓'))
@@ -1439,6 +1534,8 @@ window.__ModuleLoader__.load({
     function turnStatusInfo(view, t, stalled) {
       if (!view || view.turn === 0) return null
       if (view.running) {
+        if (view.awaiting === 'question') return { kind: 'waiting', label: tr(t, 'turn.status.answer', '等你回答') }
+        if (view.awaiting === 'approval') return { kind: 'waiting', label: tr(t, 'turn.status.approval', '待批准') }
         return {
           kind: stalled ? 'stalled' : 'running',
           label: stalled ? tr(t, 'turn.status.stalled', '无新输出') : tr(t, 'turn.status.running', '进行中'),
@@ -1471,7 +1568,7 @@ window.__ModuleLoader__.load({
      * 组装这一行的各个片段。每个片段只由自己的开关控制，互不牵连。
      * @returns {Array<{ key: string, text: string, className: string }>}
      */
-    function buildTurnSegments(view, settings, t, summary, pinned) {
+    function buildTurnSegments(view, settings, t, summary, pinned, jobs) {
       var segments = []
       if (!view || view.turn === 0) return segments
       var progress = settings.progress === true
@@ -1488,6 +1585,11 @@ window.__ModuleLoader__.load({
           text += RECAP_SEP + trf(t, 'turn.waitingFor', { duration: formatDuration(waitingMs, t) }, '等待 ' + formatDuration(waitingMs, t))
         }
         segments.push({ key: 'progress', text: text, className: due ? 'wdxt-progress wdxt-progressStalled' : 'wdxt-progress' })
+      }
+      // 后台任务还在跑：不管本轮是否结束都挂在这一行，顺带给出最近一行动作。
+      if (settings.jobs !== false && Array.isArray(jobs) && jobs.length > 0) {
+        var jobsText = jobSegmentText(jobs, t, view.running)
+        if (jobsText !== '') segments.push({ key: 'jobs', text: jobsText, className: 'wdxt-jobs' })
       }
       var activityShown = false
       if (settings.activity || keepActivity) {
@@ -1518,6 +1620,7 @@ window.__ModuleLoader__.load({
         activity: value.recapActivity === true,
         summary: value.recap !== false,
         progress: value.recapProgress !== false,
+        jobs: value.recapJobs !== false,
         stallMs: stallSeconds * 1000,
       }
     }
@@ -1533,11 +1636,12 @@ window.__ModuleLoader__.load({
       var anchorTime = view && typeof view.lastReplyAt === 'number' ? view.lastReplyAt : 0
       var from = anchorTime + Math.max(0, bucket - 1) * span
       var to = anchorTime + bucket * span
-      var empty = { from: from, to: to, windowMs: span, reasoning: '', actions: [] }
+      var empty = { from: from, to: to, windowMs: span, reasoning: '', actions: [], events: 0 }
       if (turn === 0) return empty
 
       var reasoning = ''
       var actions = []
+      var events = 0
       var list = Array.isArray(entries) ? entries : []
       for (var index = 0; index < list.length; index += 1) {
         var event = eventOf(list[index])
@@ -1545,6 +1649,9 @@ window.__ModuleLoader__.load({
         var time = typeof event.time === 'number' ? event.time : 0
         if (time < from || time >= to) continue
         var data = objectOf(event.data)
+        // 只要这一档里有事件就算模型有活动：没有活动的窗口不写进度，
+        // 等用户回答、等审批、或长命令没吐字时都保持安静。
+        if (event.type !== 'turn/start') events += 1
 
         if (event.type === 'assistant/live-chunk') {
           var chunk = objectOf(data.chunk)
@@ -1593,6 +1700,7 @@ window.__ModuleLoader__.load({
         windowMs: span,
         reasoning: clipTextTail(reasoning, 6000),
         actions: actions,
+        events: events,
       }
     }
 
@@ -1629,6 +1737,9 @@ window.__ModuleLoader__.load({
       if (actions.length > 0) {
         return trf(t, 'progress.doing', { actions: actions.slice(0, 3).join('、') }, '在' + actions.slice(0, 3).join('、'))
       }
+      // 这里只会在「窗口里有事件、但没有思考也没有新动作」时走到：说「在推进」比
+      // 说「没有新输出」准确，后者只留给真正的空窗口（空窗口已经不发进度了）。
+      if (digest && Number(digest.events) > 0) return tr(t, 'progress.activityOnly', '在推进，暂无新的说明')
       return tr(t, 'progress.noOutput', '这段时间没有新输出')
     }
 
@@ -1657,6 +1768,8 @@ window.__ModuleLoader__.load({
       return {
         turn: view.turn,
         bucket: bucket,
+        // 这一档里有没有真实事件；0 表示模型这段时间什么都没做，不要写进度。
+        events: digest.events,
         // 锚点跟着「上一次回复」走：同一次等待、同一个档位只记一条。
         anchor: typeof view.lastReplyAt === 'number' ? view.lastReplyAt : 0,
         status: 'stalled',
@@ -1704,6 +1817,9 @@ window.__ModuleLoader__.load({
     function progressDueOf(view, cfg, reported) {
       if (!view || view.running !== true || view.turn === 0) return null
       if (!cfg || cfg.progress !== true) return null
+      // 正在等用户回答 / 等审批时不记进度：这段时间没有模型活动，记了也只是
+      // 「没有新输出」。等用户答完、模型重新动起来，再按下一档继续。
+      if (view.awaiting === 'question' || view.awaiting === 'approval') return null
       var window = progressWindowOf(view.quietMs, cfg.stallMs)
       if (!window.fresh) return null
       var key = view.turn + ':' + view.lastReplyAt + ':' + window.bucket
@@ -1712,6 +1828,269 @@ window.__ModuleLoader__.load({
     }
 
     var RECAP_SEP = ' · '
+
+    // ---------------------------------------------------- background jobs
+
+    /**
+     * 从客户端 jobs 服务的 roster 里取「还在跑」的后台任务。
+     * 只要 `running` / `stopping`：结算后的任务由 DSH 自己通知模型，不再记进度。
+     */
+    function liveJobsOf(rows, now) {
+      var list = Array.isArray(rows) ? rows : []
+      var result = []
+      var nowMs = typeof now === 'number' ? now : Date.now()
+      for (var index = 0; index < list.length; index += 1) {
+        var job = list[index]
+        if (!job || typeof job.id !== 'string' || job.id === '') continue
+        if (job.status !== 'running' && job.status !== 'stopping') continue
+        var startedAt = Number(job.startedAt) || 0
+        result.push({
+          id: job.id,
+          kind: typeof job.kind === 'string' ? job.kind : '',
+          label: clipText(job.label, 80),
+          status: job.status,
+          progress: typeof job.progress === 'string' ? clipText(job.progress, 80) : '',
+          startedAt: startedAt,
+          elapsedMs: startedAt > 0 ? Math.max(0, nowMs - startedAt) : 0,
+          outputTotal: job.output && typeof job.output.total === 'number' ? job.output.total : 0,
+        })
+      }
+      return result
+    }
+
+    /** 后台任务输出里的最后一行；去掉 ANSI 颜色和 `\r` 覆盖行。 */
+    function jobOutputLine(text, maxChars) {
+      var clean = String(text === undefined || text === null ? '' : text)
+        .replace(/\u001b\[[0-9;]*[A-Za-z]/gu, '')
+        .replace(/\r\n/gu, '\n')
+        .replace(/\r/gu, '\n')
+      var lines = clean.split('\n')
+      var line = ''
+      for (var index = lines.length - 1; index >= 0; index -= 1) {
+        var candidate = lines[index].replace(/\s+/gu, ' ').trim()
+        if (candidate !== '') {
+          line = candidate
+          break
+        }
+      }
+      return clipText(line, maxChars || 120)
+    }
+
+    /**
+     * 最近几行输出：给摘要模型解释「这个任务在做什么」用。
+     * 去掉 ANSI 颜色、把 `\r` 覆盖行展开，只留最近的非空行。
+     */
+    function jobOutputTail(text, maxChars, maxLines) {
+      var limit = Math.max(1, Number(maxChars) || 600)
+      var linesLimit = Math.max(1, Number(maxLines) || 6)
+      var clean = String(text === undefined || text === null ? '' : text)
+        .replace(/\u001b\[[0-9;]*[A-Za-z]/gu, '')
+        .replace(/\r\n/gu, '\n')
+        .replace(/\r/gu, '\n')
+      var lines = clean.split('\n')
+      var picked = []
+      for (var index = lines.length - 1; index >= 0 && picked.length < linesLimit; index -= 1) {
+        var line = lines[index].replace(/\s+/gu, ' ').trim()
+        if (line !== '') picked.unshift(line.slice(0, 160))
+      }
+      var tail = picked.join('\n')
+      while (tail.length > limit && picked.length > 1) {
+        picked.shift()
+        tail = picked.join('\n')
+      }
+      return tail.length > limit ? '…' + tail.slice(-limit) : tail
+    }
+
+    /** 展示名：命令式的 label（带路径/参数）换成「bash 任务」，避免把命令流水再带回来。 */
+    function jobDisplayName(job, t) {
+      var label = typeof job.label === 'string' ? job.label.trim() : ''
+      var kind = typeof job.kind === 'string' ? job.kind : ''
+      if (label === '') return kind !== '' ? trf(t, 'progress.jobKindName', { kind: kind }, kind + ' 任务') : tr(t, 'progress.jobGeneric', '后台任务')
+      if (label.length > 60 || containsCommandText(label)) {
+        return kind !== '' ? trf(t, 'progress.jobKindName', { kind: kind }, kind + ' 任务') : tr(t, 'progress.jobGeneric', '后台任务')
+      }
+      return label
+    }
+
+    /**
+     * 这一轮的用户要求：以 turn/start 为界，取它之后第一条真人用户消息。
+     *
+     * 真实日志里 `turn/start` 先出现、`user/message` 紧随其后，而且用户消息本身
+     * 不带 turn 字段；所以按「本轮开头的第一条 user 消息」取，避免把中途的追问
+     * （比如「进度呢」）或上一轮的请求当成任务出发点。找不到就返回空，不猜。
+     */
+    function jobGoalOf(entries, turn) {
+      var list = Array.isArray(entries) ? entries : []
+      var startIndex = -1
+      if (turn > 0) {
+        for (var cursor = list.length - 1; cursor >= 0; cursor -= 1) {
+          var candidate = eventOf(list[cursor])
+          if (candidate && candidate.type === 'turn/start' && eventTurn(candidate) === turn) {
+            startIndex = cursor
+            break
+          }
+        }
+      }
+      if (startIndex >= 0) {
+        for (var index = startIndex + 1; index < list.length; index += 1) {
+          var event = eventOf(list[index])
+          if (!event || event.type !== 'user/message') continue
+          var prompt = userPromptOf(event.data)
+          if (prompt !== '') return prompt
+        }
+        return ''
+      }
+      if (turn > 0) return ''
+      // 没有轮次信息（旧窗口/刷新只拿到尾部事件）时退回最后一条用户消息。
+      for (var fallbackIndex = list.length - 1; fallbackIndex >= 0; fallbackIndex -= 1) {
+        var fallbackEvent = eventOf(list[fallbackIndex])
+        if (!fallbackEvent || fallbackEvent.type !== 'user/message') continue
+        var fallbackPrompt = userPromptOf(fallbackEvent.data)
+        if (fallbackPrompt !== '') return fallbackPrompt
+      }
+      return ''
+    }
+
+    /** 任务在做什么：产出里的最后一行 > 它自己的 progress 行 > 没有输出。 */
+    function jobActivityLine(job, t) {
+      var line = typeof job.line === 'string' && job.line !== '' ? job.line : ''
+      if (line === '') line = job.progress || ''
+      if (line === '') return tr(t, 'progress.jobNoOutput', '还没有输出')
+      return line
+    }
+
+    /** 一行里的后台任务片段：数量 + 已运行时长 + 最近一行动作。 */
+    function jobSegmentText(jobs, t, turnRunning) {
+      var live = Array.isArray(jobs) ? jobs : []
+      if (live.length === 0) return ''
+      var head = live.length > 1
+        ? (turnRunning
+            ? trf(t, 'progress.jobsRunning', { count: live.length }, '后台任务 ' + live.length + ' 个运行中')
+            : trf(t, 'progress.jobsStillRunning', { count: live.length }, '后台任务 ' + live.length + ' 个仍在运行'))
+        : (turnRunning
+            ? tr(t, 'progress.jobsRunningOne', '后台任务运行中')
+            : tr(t, 'progress.jobsStillRunningOne', '后台任务仍在运行'))
+      var longest = live[0]
+      for (var index = 1; index < live.length; index += 1) {
+        if (live[index].elapsedMs > longest.elapsedMs) longest = live[index]
+      }
+      var parts = [head]
+      if (longest.elapsedMs > 0) {
+        var duration = formatDuration(longest.elapsedMs, t)
+        parts.push(trf(t, 'progress.jobElapsed', { duration: duration }, '已运行 ' + duration))
+      }
+      var line = ''
+      for (var cursor = live.length - 1; cursor >= 0; cursor -= 1) {
+        line = live[cursor].line || live[cursor].progress || ''
+        if (line !== '') break
+      }
+      if (line !== '') parts.push(trf(t, 'progress.jobLastOutput', { line: line }, '最近输出：' + line))
+      return parts.join(RECAP_SEP)
+    }
+
+    /**
+     * 写进「会话回顾」的本地摘要：先点出这一轮要什么（会话上下文），
+     * 再说哪个任务跑了多久、最后吐了什么（任务输出）。
+     */
+    function jobProgressSummary(jobs, t, goal) {
+      var live = Array.isArray(jobs) ? jobs : []
+      if (live.length === 0) return ''
+      var perJob = []
+      for (var index = 0; index < live.length && index < 3; index += 1) {
+        var job = live[index]
+        var name = jobDisplayName(job, t)
+        var duration = formatDuration(job.elapsedMs, t)
+        var latest = jobActivityLine(job, t)
+        perJob.push(trf(t, 'progress.jobRunningLabel', { label: name }, '「' + name + '」还在运行')
+          + '，' + trf(t, 'progress.jobElapsed', { duration: duration }, '已运行 ' + duration) + '，'
+          + trf(t, 'progress.jobLastOutput', { line: latest }, '最近输出：' + latest))
+      }
+      if (live.length > 3) perJob.push('…×' + live.length)
+      var body = perJob.join(RECAP_SEP)
+      var context = typeof goal === 'string' ? clipText(goal, 80) : ''
+      if (context === '') return body
+      return trf(t, 'progress.jobAbout', { goal: context }, '关于「' + context + '」：') + body
+    }
+
+    /**
+     * 这一秒该不该为后台任务写一条进度。
+     *
+     * 本轮自己在干活（running 且没在等用户）时不写：轮次进度已经覆盖这段时间，
+     * 后台任务只在那一行露脸。本轮结束、或停在等你回答时，任务的新输出才
+     * 单独成一条；同一间隔内只写一次。
+     */
+    function jobProgressDueOf(view, cfg, now, lastAt) {
+      if (!view || !cfg || cfg.jobs === false || cfg.progress !== true) return false
+      if (typeof view.turn !== 'number' || view.turn < 1) return false
+      if (view.running && !view.awaiting) return false
+      var span = Math.max(1, Number(cfg.stallMs) || 600000)
+      var last = typeof lastAt === 'number' ? lastAt : 0
+      return now - last >= span
+    }
+
+    /**
+     * 后台任务还在跑时的进度快照：按任务自己的起点分档，同一次运行、同一档只记一条。
+     * 只有任务真吐了新东西，调用方才应该发这一条；没有新输出的窗口不写进度。
+     */
+    function jobProgressEntryOf(jobs, view, settings, t, lang, now, goal) {
+      var live = Array.isArray(jobs) ? jobs : []
+      if (live.length === 0) return null
+      var turn = view && typeof view.turn === 'number' ? view.turn : 0
+      if (turn < 1) return null
+      var span = Math.max(1, Number(settings && settings.stallMs) || 600000)
+      var anchor = 0
+      for (var index = 0; index < live.length; index += 1) {
+        if (live[index].startedAt > 0 && (anchor === 0 || live[index].startedAt < anchor)) anchor = live[index].startedAt
+      }
+      var nowMs = typeof now === 'number' ? now : Date.now()
+      if (anchor === 0) anchor = nowMs
+      var bucket = Math.max(1, Math.floor(Math.max(0, nowMs - anchor) / span))
+      var from = anchor + (bucket - 1) * span
+      var to = Math.min(nowMs, anchor + bucket * span)
+      // 任务进度固定归属「最早启动的那个任务」，Host 会按任务起点把后续条目
+      // 也收拢到任务启动的那一轮，避免同一个任务被拆到好几个轮次组。
+      var primary = live[0]
+      for (var primaryIndex = 1; primaryIndex < live.length; primaryIndex += 1) {
+        if (live[primaryIndex].startedAt > 0 && (primary.startedAt === 0 || live[primaryIndex].startedAt < primary.startedAt)) primary = live[primaryIndex]
+      }
+      return {
+        turn: turn,
+        bucket: bucket,
+        events: live.length,
+        anchor: anchor,
+        jobId: primary.id,
+        jobName: jobDisplayName(primary, t),
+        jobGoal: clipText(goal, 120),
+        status: 'running',
+        summary: jobProgressSummary(live, t, goal),
+        activity: trf(t, 'progress.jobsRunning', { count: live.length }, '后台任务 ' + live.length + ' 个运行中'),
+        digest: {
+          reasoning: '',
+          actions: [],
+          goal: clipText(goal, 120),
+          jobs: live.slice(0, 3).map(function (job) {
+            return {
+              name: jobDisplayName(job, t),
+              kind: job.kind,
+              status: job.status,
+              progress: job.progress,
+              elapsedMinutes: Math.max(0, Math.round(job.elapsedMs / 60000)),
+              line: jobActivityLine(job, t).slice(0, 300),
+              tail: jobOutputTail(job.tail, 600, 6),
+            }
+          }),
+        },
+        lang: lang === 'en' ? 'en' : 'zh',
+        windowMs: span,
+        windowFromMs: from,
+        windowToMs: to,
+        turnStartedAt: view && typeof view.startedAt === 'number' ? view.startedAt : 0,
+        elapsedMs: Math.max(0, nowMs - anchor),
+        silenceMs: 0,
+        steps: 0,
+      }
+    }
+
 
     function formatRecap(recap, t) {
       if (!recap) return ''
@@ -1744,6 +2123,7 @@ window.__ModuleLoader__.load({
       var useInput = props.useInput
       var useSettings = props.useSettings
       var readFeed = props.readFeed
+      var readJobs = props.readJobs
       var openProgress = props.openProgress
       var t = props.t
 
@@ -1762,6 +2142,10 @@ window.__ModuleLoader__.load({
       var requested = useRef('')
       var activeSession = useRef('')
       var reportedBuckets = useRef({})
+      var reportedJobs = useRef({})
+      var lastJobProgressAt = useRef(0)
+      var jobLineCache = useRef({})
+      var [jobsSnapshot, setJobsSnapshot] = useState(null)
 
       // 切换会话时清掉上一会话的摘要、静默标记和请求去重键。
       useEffect(function () {
@@ -1772,6 +2156,10 @@ window.__ModuleLoader__.load({
         requested.current = ''
         activeSession.current = ''
         reportedBuckets.current = {}
+        reportedJobs.current = {}
+        lastJobProgressAt.current = 0
+        jobLineCache.current = {}
+        setJobsSnapshot(null)
       }, [sessionId])
 
       // 只订阅事件窗口，不写会话。窗口由 Session Controller 维护。
@@ -1805,21 +2193,118 @@ window.__ModuleLoader__.load({
         return feed.subscribe(update)
       }, [sessionId, readFeed, running])
 
-      void tick
-      var view = deriveTurnView(entries, Date.now(), { running: running })
-
-      // 运行中每秒刷新耗时；事件窗口本身不保证每秒都有新事件。
+      // 后台任务：订阅客户端 jobs 服务的 roster，只看当前会话还在跑的任务。
+      // 服务缺失（旧版 DSH 或精简 composition）时这一段整体静默。
       useEffect(function () {
-        if (!view.running) return undefined
+        if (!cfg.jobs || !sessionId || typeof readJobs !== 'function') {
+          setJobsSnapshot(null)
+          return undefined
+        }
+        var service = null
+        try {
+          service = readJobs()
+        } catch (error) {
+          service = null
+        }
+        if (!service || !service.state || typeof service.state.getSnapshot !== 'function') {
+          setJobsSnapshot(null)
+          return undefined
+        }
+        var stopped = false
+        var release = function () {}
+        if (typeof service.watchRows === 'function') {
+          try {
+            release = service.watchRows(sessionId) || release
+          } catch (error) {
+            release = function () {}
+          }
+        }
+        function update() {
+          if (stopped) return
+          try {
+            setJobsSnapshot(service.state.getSnapshot())
+          } catch (error) {
+            // 会话关闭时静默；下一次会话切换会重新订阅。
+          }
+        }
+        update()
+        var unsubscribe = typeof service.state.subscribe === 'function' ? service.state.subscribe(update) : function () {}
+        return function () {
+          stopped = true
+          unsubscribe()
+          release()
+        }
+      }, [sessionId, cfg.jobs, readJobs])
+
+      void tick
+      var nowMs = Date.now()
+      var view = deriveTurnView(entries, nowMs, { running: running })
+
+      var jobRows = jobsSnapshot && jobsSnapshot.rows ? jobsSnapshot.rows[sessionId] : null
+      var observedJobs = jobsSnapshot && jobsSnapshot.observed ? jobsSnapshot.observed : {}
+      var liveJobs = liveJobsOf(jobRows, nowMs)
+      for (var jobIndex = 0; jobIndex < liveJobs.length; jobIndex += 1) {
+        var observed = observedJobs[liveJobs[jobIndex].id]
+        var observedText = observed && typeof observed.text === 'string' ? observed.text : ''
+        // 观测文本只在有新输出时变长；按 (任务, 文本) 缓存最后一行，避免每秒重扫 100KB。
+        var cachedLine = jobLineCache.current[liveJobs[jobIndex].id]
+        if (!cachedLine || cachedLine.text !== observedText) {
+          cachedLine = {
+            text: observedText,
+            line: jobOutputLine(observedText, 100),
+            tail: jobOutputTail(observedText, 600, 6),
+          }
+          jobLineCache.current[liveJobs[jobIndex].id] = cachedLine
+        }
+        liveJobs[jobIndex].line = cachedLine.line
+        liveJobs[jobIndex].tail = cachedLine.tail
+        liveJobs[jobIndex].gapBefore = Boolean(observed && observed.gapBefore)
+      }
+      var liveJobIds = liveJobs.map(function (job) { return job.id }).join(',')
+
+      // 打开观测流：同一任务被面板和这里同时观看时由服务合并成一条流。
+      useEffect(function () {
+        if (!cfg.jobs || !sessionId || liveJobIds === '' || typeof readJobs !== 'function') return undefined
+        var service = null
+        try {
+          service = readJobs()
+        } catch (error) {
+          service = null
+        }
+        if (!service || typeof service.observe !== 'function') return undefined
+        var ids = liveJobIds.split(',')
+        var releases = []
+        for (var observerIndex = 0; observerIndex < ids.length; observerIndex += 1) {
+          try {
+            releases.push(service.observe(sessionId, ids[observerIndex]))
+          } catch (error) {
+            // 单个任务观测失败不影响整行；roster 仍然能显示状态。
+          }
+        }
+        return function () {
+          for (var releaseIndex = 0; releaseIndex < releases.length; releaseIndex += 1) {
+            try {
+              releases[releaseIndex]()
+            } catch (error) {
+              // 释放失败不该打断卸载。
+            }
+          }
+        }
+      }, [liveJobIds, sessionId, cfg.jobs, readJobs])
+
+      // 运行中、或后台任务还在跑时每秒刷新耗时；事件窗口本身不保证每秒都有事件。
+      useEffect(function () {
+        if (!view.running && liveJobIds === '') return undefined
         var timer = setInterval(function () {
           setTick(function (value) { return value + 1 })
         }, 1000)
         return function () { clearInterval(timer) }
-      }, [view.running, view.turn])
+      }, [view.running, view.turn, liveJobIds])
 
       // 两种情况分开：`stalled` 只表示「没有任何事件」（真卡住）；`due` 表示
       // 「跑够久了还没给用户正文回复」，即使工具一直在动也算。
-      var stalled = Boolean(view.running && cfg.progress && view.silenceMs >= cfg.stallMs)
+      // 等用户回答 / 等审批时不算「无新输出」：那不是在卡住，是在等人。
+      var stalled = Boolean(view.running && cfg.progress && !view.awaiting && view.silenceMs >= cfg.stallMs)
       var due = Boolean(view.running && cfg.progress && view.quietMs >= cfg.stallMs)
       useEffect(function () {
         if (!due) return
@@ -1836,11 +2321,46 @@ window.__ModuleLoader__.load({
         if (!sessionId) return
         var plan = progressDueOf(view, cfg, reportedBuckets.current)
         if (plan === null) return
+        var snapshot = progressEntryOf(view, cfg, t, entries, activeUiLang())
+        // 这一档里一个事件都没有（在等用户回答、在等审批、或长命令没吐字）就不记：
+        // 之前会每 10 分钟写一条「这段时间没有新输出」，人不在这边时全是噪音。
+        if (!snapshot || snapshot.events === 0) return
         reportedBuckets.current[plan.key] = true
-        requestProgress(sessionId, progressEntryOf(view, cfg, t, entries, activeUiLang())).catch(function () {
+        requestProgress(sessionId, snapshot).catch(function () {
           // 失败不重试；下一个间隔继续。
         })
       }, [progressBucket, sessionId, view.turn, view.lastReplyAt])
+
+      // 后台任务有活动时，按同一间隔往「会话回顾」写一条进度：
+      // 读它的最新一行输出，按任务起点分档，同一次运行同一档只写一次。
+      // 只在新输出到达时触发 —— 任务安静时不做任何事。
+      var jobsActivityKey = liveJobs.map(function (job) {
+        return job.id + ':' + job.outputTotal + ':' + job.line
+      }).join('|')
+      useEffect(function () {
+        if (!sessionId || liveJobs.length === 0) return
+        var now = Date.now()
+        if (!jobProgressDueOf(view, cfg, now, lastJobProgressAt.current)) return
+        // 观测流可能比 roster 晚到；还没有任何一行输出或进度时不写，避免第一条
+        // 记成「还没有输出」。等第一帧输出到了再补这一条。
+        var hasSomething = false
+        for (var checkIndex = 0; checkIndex < liveJobs.length; checkIndex += 1) {
+          if (liveJobs[checkIndex].line !== '' || liveJobs[checkIndex].progress !== '') {
+            hasSomething = true
+            break
+          }
+        }
+        if (!hasSomething) return
+        var entry = jobProgressEntryOf(liveJobs, view, cfg, t, activeUiLang(), now, jobGoalOf(entries, view.turn))
+        if (entry === null) return
+        var key = entry.turn + ':' + entry.anchor + ':' + entry.bucket
+        if (reportedJobs.current[key] === true) return
+        reportedJobs.current[key] = true
+        lastJobProgressAt.current = now
+        requestProgress(sessionId, entry).catch(function () {
+          // 失败不重试；下一次有新输出再记。
+        })
+      }, [jobsActivityKey, sessionId, view.turn, cfg.jobs, cfg.progress, cfg.stallMs])
 
       // 轮次结束后去 Host 要一次语义摘要。Host 侧按 minTurns / cooldown /
       // similarity 决定是否真的调用模型；这里只按轮次去重。
@@ -1857,7 +2377,7 @@ window.__ModuleLoader__.load({
         requested.current = key
         // 不在下一轮开始时 abort：上一轮的摘要还在 Host 侧生成，取消会让
         // 它既不出现在这一行，也永远进不了「会话回顾」，上一轮就丢了记录。
-        requestRecap(sessionId).then(function (recap) {
+        requestRecap(sessionId, view.turn).then(function (recap) {
           if (activeSession.current !== sessionId) return
           var text = formatRecap(recap, t)
           if (text === '') return
@@ -1876,14 +2396,16 @@ window.__ModuleLoader__.load({
 
       // 运行中先展示本地活动；语义摘要只在上一条轮次结束后出现，避免把旧摘要说成这一轮。
       var visibleSummary = summary !== null && summary.turn === view.turn && !running ? summary : null
-      var segments = buildTurnSegments(view, cfg, t, visibleSummary, stickyProgress)
+      var hasLiveJobs = liveJobs.length > 0
+      var segments = buildTurnSegments(view, cfg, t, visibleSummary, stickyProgress, liveJobs)
       // 可见性可以「钉住」，状态永远用实时静默判断，避免恢复输出后还显示无新输出。
       var status = cfg.progress ? turnStatusInfo(view, t, stalled) : null
-      var showRunning = view.running && (cfg.activity || (cfg.progress && stickyProgress))
+      var showRunning = (view.running && (cfg.activity || (cfg.progress && stickyProgress))) || hasLiveJobs
       // 完成态只在三种情况下出现：有摘要、用户开了活动流水、或这一轮曾经无新输出。
       // 普通轮次结束后不常驻一条「已完成」，否则又变回噪音。
-      var showCompleted = !view.running && ((cfg.summary && visibleSummary !== null) || cfg.activity || (cfg.progress && waitedTurn === view.turn))
-      if (view.turn === 0 || (!showRunning && !showCompleted)) return null
+      var showCompleted = (!view.running && ((cfg.summary && visibleSummary !== null) || cfg.activity || (cfg.progress && waitedTurn === view.turn))) || hasLiveJobs
+      // 后台任务还在跑时，即使本轮已经结束也保留这一行，让人不用回来问「跑完没」。
+      if ((view.turn === 0 && !hasLiveJobs) || (!showRunning && !showCompleted)) return null
       if ((segments.length === 0 && status === null) || dismissedTurn === view.turn) return null
 
       var fullTitle = (status === null ? [] : [status.label]).concat(segments.map(function (segment) { return segment.text })).join(RECAP_SEP)
@@ -1922,7 +2444,7 @@ window.__ModuleLoader__.load({
         h('div', {
           className: 'wdxt-row',
           title: fullTitle,
-          'data-state': view.running ? (stalled ? 'stalled' : 'running') : view.status,
+          'data-state': view.running ? (view.awaiting ? 'waiting' : (stalled ? 'stalled' : 'running')) : (hasLiveJobs ? 'running' : view.status),
         }, children),
       ])
     }
@@ -2050,7 +2572,8 @@ window.__ModuleLoader__.load({
 
     /**
      * 按轮次分组：同一轮的进度快照和摘要放在一起。
-     * 组按最后一条记录的时间排序，order 为 desc 时反转；组内也按同样方向排序。
+     * 组按轮次排序（后台任务可能跨很多小时，按最后时间排会把旧轮次浮上来），
+     * order 为 desc 时反转；组内按时间排序，方向与组一致。
      * 旧记录没有 turn 时归到「更早的记录」。
      */
     function groupRecapEntries(items, order) {
@@ -2059,12 +2582,16 @@ window.__ModuleLoader__.load({
       for (var index = 0; index < items.length; index += 1) {
         var item = items[index]
         var hasTurn = typeof item.turn === 'number'
-        var key = hasTurn ? 't:' + item.turn : 'u'
+        var isJob = item.kind === 'progress' && typeof item.jobId === 'string' && item.jobId !== ''
+        var key = isJob ? 'j:' + item.jobId : (hasTurn ? 't:' + item.turn : 'u')
         var group = byKey.get(key)
         if (group === undefined) {
-          group = { key: key, turn: hasTurn ? item.turn : null, entries: [], firstAt: 0, lastAt: 0 }
+          group = { key: key, turn: hasTurn ? item.turn : null, entries: [], firstAt: 0, lastAt: 0, isJob: isJob, jobName: '' }
           byKey.set(key, group)
           groups.push(group)
+        }
+        if (isJob && group.jobName === '' && typeof item.jobName === 'string' && item.jobName !== '') {
+          group.jobName = item.jobName
         }
         group.entries.push(item)
         var at = recapEntryTime(item)
@@ -2072,15 +2599,26 @@ window.__ModuleLoader__.load({
         if (group.firstAt === 0 || start < group.firstAt) group.firstAt = start
         if (at > group.lastAt) group.lastAt = at
       }
-      groups.sort(function (left, right) { return (left.lastAt || 0) - (right.lastAt || 0) })
-      if (order === 'desc') groups.reverse()
+      // 后台任务单独成组（按 jobId），轮次组按轮次排序：任务可能跨很多轮跑，
+      // 混进轮次组会把「第 44 轮」拖到第 46 轮后面，轮次看起来是倒序。
+      // 「最新在前」时任务组放最前（最近有动静的任务最靠前），轮次组按轮次从大到小；
+      // 「最早在前」时轮次组从小到大，任务组放其后（按时间正序）。
+      var jobGroups = groups.filter(function (group) { return group.isJob === true })
+      var turnGroups = groups.filter(function (group) { return group.isJob !== true && group.key !== 'u' })
+      var unknown = groups.filter(function (group) { return group.key === 'u' })
+      turnGroups.sort(function (left, right) { return left.turn - right.turn })
+      jobGroups.sort(function (left, right) { return (left.lastAt || 0) - (right.lastAt || 0) })
+      if (order === 'desc') {
+        turnGroups.reverse()
+        jobGroups.reverse()
+        groups = jobGroups.concat(turnGroups).concat(unknown)
+      } else {
+        groups = turnGroups.concat(jobGroups).concat(unknown)
+      }
       for (var cursor = 0; cursor < groups.length; cursor += 1) {
         groups[cursor].entries.sort(function (left, right) { return recapEntryTime(left) - recapEntryTime(right) })
         if (order === 'desc') groups[cursor].entries.reverse()
       }
-      // 「更早的记录」没有轮次信息，固定放到列表末尾，不夹在轮次中间。
-      var unknown = groups.filter(function (group) { return group.key === 'u' })
-      if (unknown.length > 0) groups = groups.filter(function (group) { return group.key !== 'u' }).concat(unknown)
       return groups
     }
 
@@ -2092,6 +2630,19 @@ window.__ModuleLoader__.load({
     function recapGroupTime(group, t) {
       var last = formatRecapTime(group.lastAt)
       if (last === '') return ''
+      // 组里混着后台任务时，跨度是任务运行时长而不是这一轮本身的时长，别混用同一个说法。
+      if (group.isJob === true) {
+        var jobElapsed = 0
+        for (var index = 0; index < group.entries.length; index += 1) {
+          var item = group.entries[index]
+          if (item.kind !== 'progress' || typeof item.jobId !== 'string' || item.jobId === '') continue
+          if (typeof item.elapsedMs === 'number' && item.elapsedMs > jobElapsed) jobElapsed = item.elapsedMs
+        }
+        if (jobElapsed > 0) {
+          var jobDuration = formatDuration(jobElapsed, t)
+          return trf(t, 'panel.recapGroupJobTime', { time: last, duration: jobDuration }, last + ' · 任务已运行 ' + jobDuration)
+        }
+      }
       var span = group.lastAt - group.firstAt
       if (!(span > 0)) return last
       return trf(t, 'panel.recapGroupSpan', { time: last, duration: formatDuration(span, t) }, last + ' · 用时 ' + formatDuration(span, t))
@@ -2270,6 +2821,7 @@ window.__ModuleLoader__.load({
       }
 
       function groupPending(group) {
+        if (group.isJob === true) return false
         if (currentTurn === 0 || typeof group.turn !== 'number') return false
         // 正在跑的这一轮还没结束，不标；已经结束的上一轮即使会话在跑也保留标记。
         if (running && group.turn >= currentTurn) return false
@@ -2396,10 +2948,10 @@ window.__ModuleLoader__.load({
             h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'progress.elapsedLabel', '总耗时')),
             elapsed,
           ]),
-          h('p', { key: 'silence', className: 'wdxh-line' }, [
+          item.silenceMs > 0 ? h('p', { key: 'silence', className: 'wdxh-line' }, [
             h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'progress.quietLabel', '未回复')),
             silence,
-          ]),
+          ]) : null,
           typeof item.steps === 'number' && item.steps > 0 ? h('p', { key: 'steps', className: 'wdxh-line' }, [
             h('span', { key: 'label', className: 'wdxh-label' }, tr(t, 'progress.stepsLabel', '步数')),
             String(item.steps),
@@ -2459,9 +3011,13 @@ window.__ModuleLoader__.load({
 
       function groupBlock(group) {
         var expanded = expandedKey === group.key
-        var title = group.turn === null
-          ? tr(t, 'panel.recapUnknownTurn', '更早的记录')
-          : trf(t, 'progress.turn', { turn: group.turn }, '第 ' + group.turn + ' 轮')
+        var title = group.isJob === true
+          ? (group.jobName !== ''
+              ? trf(t, 'panel.recapJobGroup', { name: group.jobName }, '后台任务 · ' + group.jobName)
+              : tr(t, 'panel.recapJobGroupGeneric', '后台任务'))
+          : (group.turn === null
+              ? tr(t, 'panel.recapUnknownTurn', '更早的记录')
+              : trf(t, 'progress.turn', { turn: group.turn }, '第 ' + group.turn + ' 轮'))
         var time = recapGroupTime(group, t)
         return h('li', { key: group.key, className: 'wdxp-group' }, [
           h('button', {
@@ -3010,6 +3566,7 @@ window.__ModuleLoader__.load({
         numberField('recapStallSeconds', 600, 60, 3600, 60),
         numberField('pendingTurns', 3, 1, 20, 1),
         { field: 'recapActivity', format: booleanText, parse: parseBoolean },
+        { field: 'recapJobs', format: booleanText, parse: parseBoolean },
         textField('recapModelChain'),
         choiceField('defaultTab', DEFAULT_TAB_VALUES, 'recaps'),
         choiceField('verbosity', VERBOSITY_OPTIONS, 'low'),
@@ -3050,6 +3607,7 @@ window.__ModuleLoader__.load({
           recapStallSeconds: model.field('recapStallSeconds'),
           pendingTurns: model.field('pendingTurns'),
           recapActivity: model.field('recapActivity'),
+          recapJobs: model.field('recapJobs'),
           recapModelChain: model.field('recapModelChain'),
           defaultTab: model.field('defaultTab'),
           verbosity: model.field('verbosity'),
@@ -3267,6 +3825,7 @@ window.__ModuleLoader__.load({
       var recapStallSeconds = state.recapStallSeconds || emptyField
       var pendingTurns = state.pendingTurns || emptyField
       var recapActivity = state.recapActivity || emptyField
+      var recapJobs = state.recapJobs || emptyField
       var recapModelChain = state.recapModelChain || emptyField
       var defaultTab = state.defaultTab || emptyField
       var verbosity = state.verbosity || emptyField
@@ -3392,6 +3951,16 @@ window.__ModuleLoader__.load({
               disabled: disabled,
               onChange: function (next) { edit('recapActivity', String(next)) },
               onReset: function () { reset('recapActivity') },
+            }),
+            h(ToggleField, {
+              key: 'recapJobs',
+              t: t,
+              title: tr(t, 'settings.recapJobs.title', '后台任务进度'),
+              description: tr(t, 'settings.recapJobs.description', ''),
+              field: recapJobs,
+              disabled: disabled,
+              onChange: function (next) { edit('recapJobs', String(next)) },
+              onReset: function () { reset('recapJobs') },
             }),
             h('button', {
               key: 'advanced',
@@ -3711,6 +4280,14 @@ window.__ModuleLoader__.load({
       })
 
       // 一行固定放在输入框上方（input.dock）。
+      function readJobsService() {
+        try {
+          return typeof ctx.get === 'function' ? ctx.get('jobs') : undefined
+        } catch (error) {
+          return undefined
+        }
+      }
+
       function readTurnFeed(sessionId) {
         try {
           var binding = ctx.sessions && typeof ctx.sessions.binding === 'function' ? ctx.sessions.binding(sessionId) : undefined
@@ -3731,6 +4308,7 @@ window.__ModuleLoader__.load({
               return {
                 sessionId: sessionId,
                 readFeed: readTurnFeed,
+                readJobs: readJobsService,
                 openProgress: openProgressTab,
                 hooks: { settings: formSource },
               }
@@ -3766,7 +4344,16 @@ window.__ModuleLoader__.load({
     exports.formatDuration = formatDuration
     exports.lineSettings = lineSettings
     exports.groupRecapEntries = groupRecapEntries
+    exports.recapGroupTime = recapGroupTime
     exports.progressEntryOf = progressEntryOf
+    exports.jobProgressEntryOf = jobProgressEntryOf
+    exports.jobProgressDueOf = jobProgressDueOf
+    exports.jobGoalOf = jobGoalOf
+    exports.jobDisplayName = jobDisplayName
+    exports.liveJobsOf = liveJobsOf
+    exports.jobOutputLine = jobOutputLine
+    exports.jobOutputTail = jobOutputTail
+    exports.jobSegmentText = jobSegmentText
     exports.progressWindowOf = progressWindowOf
     exports.progressDueOf = progressDueOf
     exports.collectProgressDigest = collectProgressDigest

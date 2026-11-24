@@ -605,6 +605,89 @@ test('summarizeProgress drops a command-shaped model answer and keeps the local 
   }), null)
 })
 
+test('progress summaries include background jobs and can be built from job output alone', async () => {
+  const calls = []
+  const service = createRecapService({
+    config: config(),
+    sessions: { get: () => ({ seq: 2, deriveMessages: () => [message('user', '盯住这轮压测'), message('assistant', '监视任务还挂着，跑完我把实际条数带回来')] }) },
+    llm: () => ({
+      stream: (options) => {
+        calls.push(options)
+        return fakeStream('后台压测仍在跑，已扫完前 3 批。')
+      },
+    }),
+    defaultSelection: () => ({ provider: 'p', model: 'm' }),
+    history: { list: () => [], append: () => true },
+  })
+  const result = await service.summarizeProgress('s1', {
+    turn: 45,
+    bucket: 47,
+    anchor: 1000000,
+    windowMs: 600000,
+    lang: 'zh',
+    digest: {
+      reasoning: '',
+      actions: [],
+      goal: '把压测跑完并把结果带回来',
+      jobs: [
+        { name: '压测监视', kind: 'bash', status: 'running', elapsedMinutes: 466, line: '正在扫描第 3/10 批', tail: '第 2 批完成\n第 3 批扫描中' },
+        { label: '', status: '', line: '', elapsedMinutes: 0 },
+      ],
+    },
+  })
+  assert.equal(result.summary, '后台压测仍在跑，已扫完前 3 批。')
+  assert.equal(calls.length, 1)
+  const prompt = calls[0].messages[0].content[0].text
+  assert.match(prompt, /还在跑的后台任务（请用人话解释）：/)
+  assert.match(prompt, /本轮目标：把压测跑完并把结果带回来/)
+  assert.match(prompt, /本轮最后回复：监视任务还挂着，跑完我把实际条数带回来/)
+  assert.match(prompt, /压测监视（bash）（运行中，已运行 466 分钟）/)
+  assert.match(prompt, /最近输出：\n  第 2 批完成\n  第 3 批扫描中/)
+
+  const english = buildProgressPrompt({
+    fromMinute: 461,
+    toMinute: 470,
+    goal: 'finish the load test',
+    turnReply: 'the monitor is still running; I will bring the counts back',
+    jobs: [{ name: 'monitor', kind: 'bash', status: 'running', progress: '3/10', elapsedMinutes: 466, tail: 'scanned 3/10\nscanned 4/10' }],
+  }, 'en')
+  assert.match(english, /Turn goal: finish the load test/)
+  assert.match(english, /Last reply to the user: the monitor is still running/)
+  assert.match(english, /Background jobs still running \(explain them in plain language\):/)
+  assert.match(english, /monitor \[bash\] \(running, 466 min\)/)
+  assert.match(english, /its progress: 3\/10/)
+  assert.match(english, /recent output:\n  scanned 3\/10\n  scanned 4\/10/)
+  // 中文同样带上下文与输出。
+  const contextual = buildProgressPrompt({
+    goal: '把压测跑完',
+    turnReply: '监视任务还挂着，跑完我把结果带回来',
+    fromMinute: 461,
+    toMinute: 470,
+    jobs: [{ name: '压测监视', kind: 'bash', status: 'running', elapsedMinutes: 466, tail: '第 3 批完成\n第 4 批进行中' }],
+  })
+  assert.match(contextual, /本轮目标：把压测跑完/)
+  assert.match(contextual, /本轮最后回复：监视任务还挂着/)
+  assert.match(contextual, /压测监视（bash）（运行中，已运行 466 分钟）/)
+  // 老客户端只有一行输出、没有 tail 时也能进 prompt。
+  assert.match(buildProgressPrompt({ fromMinute: 1, toMinute: 10, jobs: [{ name: 'monitor', status: 'running', elapsedMinutes: 5, line: '第 1 批完成' }] }), /最近输出：\n  第 1 批完成/)
+
+  // 没有任何有效任务字段的 digest 仍然不调模型。
+  let emptyCalls = 0
+  const empty = createRecapService({
+    config: config(),
+    sessions: { get: () => ({ seq: 1, deriveMessages: () => [] }) },
+    llm: () => ({ stream: () => { emptyCalls += 1; return fakeStream('x') } }),
+    defaultSelection: () => ({ provider: 'p', model: 'm' }),
+  })
+  assert.equal(await empty.summarizeProgress('s1', {
+    turn: 1,
+    bucket: 1,
+    windowMs: 600000,
+    digest: { reasoning: '', actions: [], jobs: [{ label: '', status: '', line: '' }, null, 'nope'] },
+  }), null)
+  assert.equal(emptyCalls, 0)
+})
+
 test('summarizeProgress uses the real window offsets for the prompt window', async () => {
   const calls = []
   const service = createRecapService({
