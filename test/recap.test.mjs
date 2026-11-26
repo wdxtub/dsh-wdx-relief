@@ -126,6 +126,13 @@ test('maxWords counts CJK by character and Latin by word', () => {
   assert.equal(limitWords('one two three four', 3), 'one two three…')
   assert.equal(limitWords('修复测试', 40), '修复测试')
   assert.match(buildSummarySystemPrompt(12), /12 个词/)
+
+  // 摘要要一句话说清结果：预算收紧到 30，并且明确禁止罗列实现细节。
+  const prompt = buildSummarySystemPrompt(40)
+  assert.match(prompt, /30 个词/)
+  assert.match(prompt, /只写一句话/)
+  assert.match(prompt, /不写工程过程/)
+  assert.doesNotMatch(prompt, /40 个词/)
 })
 
 test('similarity is a token-set Jaccard score', () => {
