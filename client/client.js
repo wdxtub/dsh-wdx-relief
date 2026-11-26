@@ -85,7 +85,7 @@ window.__ModuleLoader__.load({
       '.wdxs-fallback{border:0;padding:0;margin:0}',
       '.wdxt-root{box-sizing:border-box;width:calc(100% - var(--dsh-composer-side-clearance) - var(--dsh-composer-side-clearance) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));max-width:calc(var(--dsh-composer-card-max-width) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset) - var(--dsh-composer-dock-inset));margin:0 auto;padding:0 var(--dsh-composer-dock-inset)}',
       '.wdxt-root[data-placement="below"]{width:auto;max-width:none;flex:1 1 auto;min-width:0;padding:0}',
-      '.wdxt-row{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);min-height:28px;align-items:center;gap:6px;padding:4px 6px 4px 10px;font-size:12px;line-height:18px;display:flex;animation:wdxt-fade .18s ease-out}',
+      '.wdxt-row{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);min-height:28px;align-items:center;gap:6px;padding:4px 6px 4px 10px;font-size:12px;line-height:18px;display:flex;animation:wdxt-fade .18s ease-out;container-type:inline-size}',
       '@keyframes wdxt-fade{from{opacity:0;transform:translateY(2px)}to{opacity:1;transform:none}}',
       '@media (prefers-reduced-motion:reduce){.wdxt-row{animation:none}}',
       '.wdxt-row[data-state="running"]{border-color:var(--dsw-alias-state-business-tertiary)}',
@@ -95,10 +95,16 @@ window.__ModuleLoader__.load({
       '.wdxt-progress{color:var(--dsw-alias-label-tertiary);flex:0 1 auto;min-width:0;font-variant-numeric:tabular-nums}',
       '.wdxt-progressStalled{color:var(--dsw-alias-state-warn-label)}',
       '.wdxt-activity{color:var(--dsw-alias-label-tertiary);flex:0 1 auto;max-width:46%}',
+      '.wdxt-goal{color:var(--dsw-alias-label-tertiary);flex:0 1 auto;max-width:40%;min-width:0}',
+      '.wdxt-reason{color:var(--dsw-alias-label-secondary);flex:0 1 auto;max-width:52%;min-width:0}',
       '.wdxt-jobs{color:var(--dsw-alias-state-business-primary);flex:0 1 auto;max-width:52%}',
       '.wdxt-summary{color:var(--dsw-alias-label-secondary);flex:1 1 auto;min-width:0}',
       '.wdxt-sep{color:var(--dsw-alias-border-l3);flex:none}',
-      '.wdxt-status{box-sizing:border-box;height:18px;border-radius:999px;flex:none;align-items:center;gap:4px;padding:0 6px;font-size:11px;line-height:16px;display:inline-flex;border:.5px solid var(--dsw-alias-border-l2);white-space:nowrap}',
+      '.wdxt-status{box-sizing:border-box;height:18px;border-radius:999px;flex:none;max-width:46%;align-items:center;gap:4px;padding:0 6px;font-size:11px;line-height:16px;display:inline-flex;border:.5px solid var(--dsw-alias-border-l2);white-space:nowrap}',
+      '.wdxt-statusLabel{min-width:0;overflow:hidden;text-overflow:ellipsis}',
+      // 窄的时候先让「这一轮的要求」退场：状态和时长才是当下要看的。
+      '@container (max-width:760px){.wdxt-goal{display:none}}',
+      '@container (max-width:560px){.wdxt-activity{display:none}.wdxt-reason{max-width:36%}.wdxt-jobs{max-width:36%}}',
       '.wdxt-status[data-kind="running"]{color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-bg-base)}',
       '.wdxt-status[data-kind="stalled"]{color:var(--dsw-alias-state-warn-label);border-color:var(--dsw-alias-state-warn-secondary);background:var(--dsw-alias-bg-base)}',
       '.wdxt-status[data-kind="waiting"]{color:var(--dsw-alias-state-warn-label);border-color:var(--dsw-alias-state-warn-secondary);background:var(--dsw-alias-bg-base)}',
@@ -284,13 +290,16 @@ window.__ModuleLoader__.load({
       'settings.toolRepairDebugLog.description': '输出检测、拦截与修复过程日志（默认关闭）',
       'turn.pending': '还没回复',
       'turn.dismiss': '本轮不再显示这一行',
-      'turn.thinking': '思考中…',
-      'turn.answering': '正在回复…',
-      'turn.tool': '调用工具…',
-      'turn.status.running': '进行中',
-      'turn.status.stalled': '无新输出',
+      'turn.acting.thinking': '思考中',
+      'turn.acting.answering': '正在回复',
+      'turn.acting.tool': '调用工具',
+      'turn.acting.handling': '处理结果',
+      'turn.status.stalledFor': '无新输出 {duration}',
       'turn.status.answer': '等你回答',
       'turn.status.approval': '待批准',
+      'turn.status.approvalFor': '待批准 {tool}',
+      'turn.errorReason': '原因：{reason}',
+      'turn.goal': '「{goal}」',
       'turn.status.done': '已完成',
       'turn.status.aborted': '已取消',
       'turn.status.error': '出错',
@@ -300,12 +309,15 @@ window.__ModuleLoader__.load({
       'turn.status.forked': '已分叉',
       'turn.runningFor': '第 {turn} 轮 · 已进行 {duration}',
       'turn.took': '第 {turn} 轮 · 用时 {duration}',
-      'turn.waitingFor': '等待 {duration}',
+      'turn.unrepliedTurn': '第 {turn} 轮 · 未回复 {duration}',
+      'turn.unrepliedFor': '未回复 {duration}',
+      'turn.repeat': '{label} ×{count}',
       'turn.progressHint': '每 {duration} 在「会话回顾」记一条进度',
       'duration.seconds': '{s} 秒',
       'duration.minutes': '{m} 分 {s} 秒',
       'duration.minuteOnly': '{m} 分',
       'duration.hours': '{h} 小时 {m} 分',
+      'duration.hoursOnly': '{h} 小时',
       'turn.verb.read': '读取',
       'turn.verb.write': '修改',
       'turn.verb.command': '运行',
@@ -392,6 +404,7 @@ window.__ModuleLoader__.load({
       'progress.jobKindName': '{kind} 任务',
       'progress.jobRunningLabel': '「{label}」还在运行',
       'progress.jobElapsed': '已运行 {duration}',
+      'progress.jobNameElapsed': '「{name}」已运行 {duration}',
       'progress.jobLastOutput': '最近输出：{line}',
       'progress.jobNoOutput': '还没有输出',
       'section.btw': '旁问',
@@ -485,13 +498,16 @@ window.__ModuleLoader__.load({
       'settings.toolRepairDebugLog.description': 'Log detection, denials and repairs (off by default)',
       'turn.pending': 'no reply yet',
       'turn.dismiss': 'Hide this line for this turn',
-      'turn.thinking': 'Thinking…',
-      'turn.answering': 'Replying…',
-      'turn.tool': 'Running a tool…',
-      'turn.status.running': 'Running',
-      'turn.status.stalled': 'No output',
+      'turn.acting.thinking': 'Thinking',
+      'turn.acting.answering': 'Replying',
+      'turn.acting.tool': 'Running a tool',
+      'turn.acting.handling': 'Reading result',
+      'turn.status.stalledFor': 'No output for {duration}',
       'turn.status.answer': 'Waiting for you',
       'turn.status.approval': 'Waiting for approval',
+      'turn.status.approvalFor': 'Approval: {tool}',
+      'turn.errorReason': 'reason: {reason}',
+      'turn.goal': '"{goal}"',
       'turn.status.done': 'Done',
       'turn.status.aborted': 'Cancelled',
       'turn.status.error': 'Failed',
@@ -501,12 +517,15 @@ window.__ModuleLoader__.load({
       'turn.status.forked': 'Forked',
       'turn.runningFor': 'Turn {turn} · {duration} elapsed',
       'turn.took': 'Turn {turn} · {duration}',
-      'turn.waitingFor': 'waiting {duration}',
+      'turn.unrepliedTurn': 'Turn {turn} · no reply for {duration}',
+      'turn.unrepliedFor': 'no reply for {duration}',
+      'turn.repeat': '{label} ×{count}',
       'turn.progressHint': 'One progress entry every {duration} in Session review',
       'duration.seconds': '{s}s',
       'duration.minutes': '{m}m {s}s',
       'duration.minuteOnly': '{m}m',
       'duration.hours': '{h}h {m}m',
+      'duration.hoursOnly': '{h}h',
       'turn.verb.read': 'Read',
       'turn.verb.write': 'Edit',
       'turn.verb.command': 'Run',
@@ -593,6 +612,7 @@ window.__ModuleLoader__.load({
       'progress.jobKindName': '{kind} job',
       'progress.jobRunningLabel': '{label} is still running',
       'progress.jobElapsed': 'running {duration}',
+      'progress.jobNameElapsed': '"{name}" running for {duration}',
       'progress.jobLastOutput': 'Latest output: {line}',
       'progress.jobNoOutput': 'no output yet',
       'section.btw': 'Aside',
@@ -1295,8 +1315,8 @@ window.__ModuleLoader__.load({
       return 'done'
     }
 
+    /** 结束态的状态词；运行中的标签由 `runningActionLabel` 单独给出。 */
     function turnStatusLabel(status, t) {
-      if (status === 'running') return tr(t, 'turn.status.running', '进行中')
       if (status === 'done') return tr(t, 'turn.status.done', '已完成')
       if (status === 'aborted') return tr(t, 'turn.status.aborted', '已取消')
       if (status === 'error') return tr(t, 'turn.status.error', '出错')
@@ -1312,7 +1332,7 @@ window.__ModuleLoader__.load({
      * @param {Array<object>} entries - `binding.eventSource.getSnapshot().entries`
      * @param {number} now - 当前时间，用来在运行中累计耗时
      * @param {{ running?: boolean }} [options]
-     * @returns {{ turn: number, running: boolean, startedAt: number, elapsedMs: number, lastEventAt: number, silenceMs: number, lastReplyAt: number, quietMs: number, endedAt: number, endReason: object|null, status: string, steps: number, actions: Array<object>, tool: object|null, reasoning: string, phase: string }}
+     * @returns {{ turn: number, running: boolean, startedAt: number, elapsedMs: number, lastEventAt: number, silenceMs: number, lastReplyAt: number, quietMs: number, endedAt: number, endReason: object|null, status: string, steps: number, actions: Array<object>, tool: object|null, reasoning: string, phase: string, awaiting: string, askQuestion: string, approvalTool: string }}
      *
      * 两个「静默」不是一回事：
      * - `silenceMs`：距最后一个事件多久，用来判断真的卡住了（无新输出）；
@@ -1342,7 +1362,7 @@ window.__ModuleLoader__.load({
           }
         }
         if (anchor === -1) {
-          return { turn: 0, running: false, startedAt: 0, elapsedMs: 0, lastEventAt: 0, silenceMs: 0, lastReplyAt: 0, quietMs: 0, endedAt: 0, endReason: null, status: 'idle', steps: 0, actions: [], tool: null, reasoning: '', phase: 'idle', awaiting: '', askQuestion: '' }
+          return { turn: 0, running: false, startedAt: 0, elapsedMs: 0, lastEventAt: 0, silenceMs: 0, lastReplyAt: 0, quietMs: 0, endedAt: 0, endReason: null, status: 'idle', steps: 0, actions: [], tool: null, reasoning: '', phase: 'idle', awaiting: '', askQuestion: '', approvalTool: '' }
         }
         while (anchor > 0 && eventTurn(eventOf(list[anchor - 1])) === turn) anchor -= 1
       }
@@ -1363,6 +1383,7 @@ window.__ModuleLoader__.load({
       var openAskId = ''
       var askQuestion = ''
       var pendingApproval = false
+      var approvalTool = ''
 
       for (var cursor = anchor; cursor < list.length; cursor += 1) {
         var event = eventOf(list[cursor])
@@ -1412,8 +1433,11 @@ window.__ModuleLoader__.load({
           }
         } else if (event.type === 'approval/asked') {
           pendingApproval = true
+          // 待批准时最想知道的一句话是「批准什么」，事件里只有工具名。
+          approvalTool = typeof data.toolName === 'string' ? clipText(data.toolName, 24) : ''
         } else if (event.type === 'approval/decided') {
           pendingApproval = false
+          approvalTool = ''
         } else if (event.type === 'assistant/live-chunk') {
           var chunk = objectOf(data.chunk)
           if (chunk.type === 'reasoning-delta') {
@@ -1481,6 +1505,7 @@ window.__ModuleLoader__.load({
         phase: phase,
         awaiting: awaiting,
         askQuestion: awaiting === 'question' ? askQuestion : '',
+        approvalTool: awaiting === 'approval' ? approvalTool : '',
       }
     }
 
@@ -1495,7 +1520,19 @@ window.__ModuleLoader__.load({
         return trf(t, 'duration.minutes', { m: minutes, s: rest }, minutes + ' 分 ' + rest + ' 秒')
       }
       var hours = Math.floor(minutes / 60)
+      if (minutes % 60 === 0) return trf(t, 'duration.hoursOnly', { h: hours }, hours + ' 小时')
       return trf(t, 'duration.hours', { h: hours, m: minutes % 60 }, hours + ' 小时 ' + minutes % 60 + ' 分')
+    }
+
+    /**
+     * 徽标里用的粗粒度时长：分钟起步，不往小数点/秒走。
+     * 「无新输出 12 分 47 秒」太长，而且徽标里秒级跳动只会让人以为是坏掉。
+     */
+    function formatBriefDuration(ms, t) {
+      var seconds = typeof ms === 'number' && isFinite(ms) ? Math.max(0, Math.round(ms / 1000)) : 0
+      var minutes = Math.max(1, Math.floor(seconds / 60))
+      if (minutes < 60) return trf(t, 'duration.minuteOnly', { m: minutes }, minutes + ' 分')
+      return formatDuration(seconds * 1000, t)
     }
 
     /** user/message 的 data 有的包在 message 里，有的直接是消息体。 */
@@ -1527,48 +1564,129 @@ window.__ModuleLoader__.load({
       } else if (props.kind === 'done') {
         children.push(h('span', { key: 'check', className: 'wdxt-check', 'aria-hidden': 'true' }, '✓'))
       }
-      children.push(h('span', { key: 'label' }, props.label))
+      children.push(h('span', { key: 'label', className: 'wdxt-statusLabel' }, props.label))
       return h('span', { className: 'wdxt-status', 'data-kind': props.kind, role: props.live === true ? 'status' : undefined, 'aria-live': props.live === true ? 'polite' : undefined }, children)
     }
 
-    function turnStatusInfo(view, t, stalled) {
+    /** 连续同名动作的条数，给徽标用：「运行命令 ×3」一眼看出它已经连着跑了三条。 */
+    function trailingRepeat(view, t, label) {
+      var all = Array.isArray(view.actions) ? view.actions : []
+      var count = 0
+      for (var index = all.length - 1; index >= 0; index -= 1) {
+        if (toolLabel(all[index], t) !== label) break
+        count += 1
+      }
+      return count
+    }
+
+    /**
+     * 运行中的徽标写「现在在做什么」，不写「进行中」：
+     * 这一行本来只在跑的时候才出现，光说「进行中」等于把行本身又说一遍。
+     * 真卡住或等人时状态词才有意义，那些分支在 `turnStatusInfo` 前面就返回了。
+     * `withRepeat` 为假时（活动流水已经摊开、次数写在流水里）只给动作名。
+     */
+    function runningActionLabel(view, t, withRepeat) {
+      if (view.phase === 'tool') {
+        var label = view.tool && view.tool.done !== true ? toolLabel(view.tool, t) : ''
+        if (label === '') return tr(t, 'turn.acting.tool', '调用工具')
+        var repeat = withRepeat === false ? 1 : trailingRepeat(view, t, label)
+        return repeat > 1 ? trf(t, 'turn.repeat', { label: label, count: repeat }, label + ' ×' + repeat) : label
+      }
+      if (view.phase === 'tool-done') return tr(t, 'turn.acting.handling', '处理结果')
+      if (view.phase === 'answering') return tr(t, 'turn.acting.answering', '正在回复')
+      return tr(t, 'turn.acting.thinking', '思考中')
+    }
+
+    function turnStatusInfo(view, t, stalled, options) {
       if (!view || view.turn === 0) return null
       if (view.running) {
         if (view.awaiting === 'question') return { kind: 'waiting', label: tr(t, 'turn.status.answer', '等你回答') }
-        if (view.awaiting === 'approval') return { kind: 'waiting', label: tr(t, 'turn.status.approval', '待批准') }
-        return {
-          kind: stalled ? 'stalled' : 'running',
-          label: stalled ? tr(t, 'turn.status.stalled', '无新输出') : tr(t, 'turn.status.running', '进行中'),
+        if (view.awaiting === 'approval') {
+          // 「待批准」本身没说批准什么；事件里有工具名就带上。
+          var tool = typeof view.approvalTool === 'string' ? view.approvalTool : ''
+          return {
+            kind: 'waiting',
+            label: tool === ''
+              ? tr(t, 'turn.status.approval', '待批准')
+              : trf(t, 'turn.status.approvalFor', { tool: tool }, '待批准 ' + tool),
+          }
         }
+        // 真没有新输出时优先报「无新输出」，并给出静默了多久：
+        // 这时知道它在跑哪一步没用，要知道它是不是已经停了、停了多久。
+        if (stalled) {
+          var silent = formatBriefDuration(view.silenceMs, t)
+          return { kind: 'stalled', label: trf(t, 'turn.status.stalledFor', { duration: silent }, '无新输出 ' + silent) }
+        }
+        return { kind: 'running', label: runningActionLabel(view, t, options && typeof options === 'object' ? options.repeat : true) }
       }
       var status = typeof view.status === 'string' && view.status !== 'idle' ? view.status : 'done'
       return { kind: status, label: turnStatusLabel(status, t) }
     }
 
-    /** 最近两个动作连成流水；没有工具时用阶段兜底。 */
-    function activityText(view, t) {
-      if (!view || view.turn === 0) return ''
-      var all = Array.isArray(view.actions) ? view.actions : []
-      if (all.length > 0) {
-        var shown = all.slice(-2)
-        var prefix = all.length > 2 ? '… → ' : ''
-        return prefix + shown.map(function (item, index) {
-          var label = toolLabel(item, t)
-          if (index === shown.length - 1 && item.done === false) label += '…'
-          return label
-        }).join(' → ')
+    /**
+     * 动作流水压成「A → B ×4」：相邻同名动作折叠。
+     * 命令的参数本来就不展示，连着四条一样的「运行命令」除了占位没有信息。
+     */
+    function activityChain(all, t) {
+      var groups = []
+      for (var index = 0; index < all.length; index += 1) {
+        var label = toolLabel(all[index], t)
+        if (label === '') continue
+        var tail = groups.length > 0 ? groups[groups.length - 1] : null
+        if (tail !== null && tail.label === label) tail.count += 1
+        else groups.push({ label: label, count: 1 })
       }
-      if (view.phase === 'reasoning') return tr(t, 'turn.thinking', '思考中…')
-      if (view.phase === 'answering') return tr(t, 'turn.answering', '正在回复…')
-      if (view.phase === 'tool') return tr(t, 'turn.tool', '调用工具…')
+      if (groups.length === 0) return ''
+      var shown = groups.slice(-2)
+      var text = shown.map(function (group) {
+        if (group.count === 1) return group.label
+        return trf(t, 'turn.repeat', { label: group.label, count: group.count }, group.label + ' ×' + group.count)
+      }).join(' → ')
+      return (groups.length > shown.length ? '… → ' : '') + text
+    }
+
+    /**
+     * 活动流水什么时候摊开：显式开了「活动流水」、真没有新输出（徽标这时让位给
+     * 「无新输出」）、或这一轮已经结束。摊开的时候次数写在流水里，徽标就不带了。
+     */
+    function activityChainShown(view, settings) {
+      if (!view || view.running !== true) return true
+      var value = settings || {}
+      if (value.activity === true) return true
+      if (view.awaiting) return false
+      if (typeof value.stallMs !== 'number' || value.stallMs <= 0) return false
+      return typeof view.silenceMs === 'number' && view.silenceMs >= value.stallMs
+    }
+
+    /** 这一行现在在做什么：能拿到思考片段就给它，否则给最近两个动作。 */
+    function activityText(view, t, options) {
+      if (!view || view.turn === 0) return ''
+      // 等你回答时有用的是那句问题本身；`ask` 的动作名里已经带了一次，别再叠一个动词。
+      if (view.awaiting === 'question' && typeof view.askQuestion === 'string' && view.askQuestion !== '') return clipText(view.askQuestion, 60)
+      // 思考中的那一句比「运行命令 → 运行命令」有信息量；一进工具它就被清空。
+      if (view.phase === 'reasoning' && typeof view.reasoning === 'string' && view.reasoning !== '') return view.reasoning
+      // 当前动作已经在徽标里，流水默认不再重复；只有摊开时才给。
+      if (options && options.chain === false) return ''
+      var all = Array.isArray(view.actions) ? view.actions : []
+      if (all.length > 0) return activityChain(all, t)
       return ''
+    }
+
+    /** turn/end 的失败原因压成一句：有 message 用它，没有就退回错误码。 */
+    function turnErrorText(view) {
+      var reason = view && view.endReason && typeof view.endReason === 'object' ? view.endReason : {}
+      var failure = reason.error && typeof reason.error === 'object' ? reason.error : {}
+      var message = typeof failure.message === 'string' ? clipText(failure.message, 80) : ''
+      if (message !== '') return message
+      return typeof failure.code === 'string' ? failure.code : ''
     }
 
     /**
      * 组装这一行的各个片段。每个片段只由自己的开关控制，互不牵连。
+     * @param {string} [goal] - 这一轮用户的要求，给「现在这行是在为谁干活」一个着落。
      * @returns {Array<{ key: string, text: string, className: string }>}
      */
-    function buildTurnSegments(view, settings, t, summary, pinned, jobs) {
+    function buildTurnSegments(view, settings, t, summary, pinned, jobs, goal) {
       var segments = []
       if (!view || view.turn === 0) return segments
       var progress = settings.progress === true
@@ -1581,11 +1699,19 @@ window.__ModuleLoader__.load({
           ? trf(t, 'turn.runningFor', { turn: view.turn, duration: duration }, '第 ' + view.turn + ' 轮 · 已进行 ' + duration)
           : trf(t, 'turn.took', { turn: view.turn, duration: duration }, '第 ' + view.turn + ' 轮 · 用时 ' + duration)
         if (due) {
-          var waitingMs = Math.floor(view.quietMs / settings.stallMs) * settings.stallMs
-          text += RECAP_SEP + trf(t, 'turn.waitingFor', { duration: formatDuration(waitingMs, t) }, '等待 ' + formatDuration(waitingMs, t))
+          // 「未回复」和本轮时长在没有回复过的时候是同一段时间（两者都从本轮开始算），
+          // 同时写就是把一件事说两遍；那一格只报一次，中途回复过才需要两个数字。
+          var quiet = formatDuration(view.quietMs, t)
+          var repliedInTurn = typeof view.lastReplyAt === 'number' && typeof view.startedAt === 'number' && view.lastReplyAt > view.startedAt
+          text = repliedInTurn
+            ? text + RECAP_SEP + trf(t, 'turn.unrepliedFor', { duration: quiet }, '未回复 ' + quiet)
+            : trf(t, 'turn.unrepliedTurn', { turn: view.turn, duration: quiet }, '第 ' + view.turn + ' 轮 · 未回复 ' + quiet)
         }
         segments.push({ key: 'progress', text: text, className: due ? 'wdxt-progress wdxt-progressStalled' : 'wdxt-progress' })
       }
+      // 出错时「出错」两个字说明了状态，没说为什么；把原因挂上去。
+      var failure = view.running ? '' : turnErrorText(view)
+      if (failure !== '') segments.push({ key: 'reason', text: trf(t, 'turn.errorReason', { reason: failure }, '原因：' + failure), className: 'wdxt-reason' })
       // 后台任务还在跑：不管本轮是否结束都挂在这一行，顺带给出最近一行动作。
       if (settings.jobs !== false && Array.isArray(jobs) && jobs.length > 0) {
         var jobsText = jobSegmentText(jobs, t, view.running)
@@ -1593,18 +1719,24 @@ window.__ModuleLoader__.load({
       }
       var activityShown = false
       if (settings.activity || keepActivity) {
-        var activity = activityText(view, t)
+        var activity = activityText(view, t, { chain: activityChainShown(view, settings) })
         if (activity !== '') {
           segments.push({ key: 'activity', text: activity, className: 'wdxt-activity' })
           activityShown = true
         }
       }
+      // 这一轮的要求：长轮次、跨轮次的后台任务里，「第几轮」本身不说明在干什么。
+      if (typeof goal === 'string' && goal.trim() !== '') {
+        var goalText = clipText(goal, 40)
+        segments.push({ key: 'goal', text: trf(t, 'turn.goal', { goal: goalText }, '「' + goalText + '」'), className: 'wdxt-goal' })
+      }
       if (settings.summary && summary && summary.text) {
         segments.push({ key: 'summary', text: '※ ' + summary.text, className: 'wdxt-summary' })
       }
       // 完成后没有摘要时，至少留一句「最后做了什么」，否则这一行只剩状态和耗时。
-      if (!view.running && progress && !activityShown && !(settings.summary && summary && summary.text)) {
-        var lastActivity = activityText(view, t)
+      // 已经给了失败原因的行不再补最后动作：两句话挤在一行，谁也读不完。
+      if (!view.running && progress && failure === '' && !activityShown && !(settings.summary && summary && summary.text)) {
+        var lastActivity = activityText(view, t, { chain: true })
         if (lastActivity !== '') segments.push({ key: 'activity', text: lastActivity, className: 'wdxt-activity' })
       }
       return segments
@@ -1717,9 +1849,13 @@ window.__ModuleLoader__.load({
       return labels
     }
 
-    /** 本地兜底也要避开命令句，否则模型摘要被拦下后仍会显示脚本参数。 */
+    /**
+     * 本地兜底也要避开命令句，否则模型摘要被拦下后仍会显示脚本参数。
+     * 除了路径和 `--flag`，shell 自己的结构（`; do`、管道、`$VAR`、开头的
+     * while/for）也当命令处理：任务名里出现这些词，对人来说是噪音。
+     */
     function containsCommandText(text) {
-      return /\/Users\/|\/home\/|\s--[A-Za-z][\w-]*|`[^`]+`/u.test(String(text || ''))
+      return /\/Users\/|\/home\/|\s--[A-Za-z][\w-]*|`[^`]+`|;\s*(?:do|done|then|fi)\b|&&|\|\||\$\{[A-Za-z_]|\$[A-Za-z_][\w]*|^\s*(?:sudo|cd|export|while|for|if|nohup|source)\s/u.test(String(text || ''))
     }
 
     /** 模型失败时的本地兜底：思考片段里第一句不含命令的话 > 这段在做什么动作。 */
@@ -1919,7 +2055,7 @@ window.__ModuleLoader__.load({
      * 不带 turn 字段；所以按「本轮开头的第一条 user 消息」取，避免把中途的追问
      * （比如「进度呢」）或上一轮的请求当成任务出发点。找不到就返回空，不猜。
      */
-    function jobGoalOf(entries, turn) {
+    function turnGoalOf(entries, turn) {
       var list = Array.isArray(entries) ? entries : []
       var startIndex = -1
       if (turn > 0) {
@@ -1959,7 +2095,11 @@ window.__ModuleLoader__.load({
       return line
     }
 
-    /** 一行里的后台任务片段：数量 + 已运行时长 + 最近一行动作。 */
+    /**
+     * 一行里的后台任务片段：几个在跑 + 其中一个的名字/时长/最近一行输出。
+     * 之前只报「已运行」最大值和「最近输出」，名字缺失、两个数字还可能来自不同任务，
+     * 多个任务时读不出「到底哪个在干什么」。
+     */
     function jobSegmentText(jobs, t, turnRunning) {
       var live = Array.isArray(jobs) ? jobs : []
       if (live.length === 0) return ''
@@ -1970,21 +2110,27 @@ window.__ModuleLoader__.load({
         : (turnRunning
             ? tr(t, 'progress.jobsRunningOne', '后台任务运行中')
             : tr(t, 'progress.jobsStillRunningOne', '后台任务仍在运行'))
-      var longest = live[0]
-      for (var index = 1; index < live.length; index += 1) {
-        if (live[index].elapsedMs > longest.elapsedMs) longest = live[index]
-      }
-      var parts = [head]
-      if (longest.elapsedMs > 0) {
-        var duration = formatDuration(longest.elapsedMs, t)
-        parts.push(trf(t, 'progress.jobElapsed', { duration: duration }, '已运行 ' + duration))
-      }
+      // 优先说明「最近有输出」的那个任务：名字、时长、输出放在同一个任务上。
+      var described = live[0]
       var line = ''
       for (var cursor = live.length - 1; cursor >= 0; cursor -= 1) {
         line = live[cursor].line || live[cursor].progress || ''
-        if (line !== '') break
+        if (line !== '') {
+          described = live[cursor]
+          break
+        }
       }
-      if (line !== '') parts.push(trf(t, 'progress.jobLastOutput', { line: line }, '最近输出：' + line))
+      var name = jobDisplayName(described, t)
+      var parts = [head]
+      if (described.elapsedMs > 0) {
+        var duration = formatDuration(described.elapsedMs, t)
+        parts.push(trf(t, 'progress.jobNameElapsed', { name: name, duration: duration }, '「' + name + '」已运行 ' + duration))
+      } else if (name !== '') {
+        parts.push('「' + name + '」')
+      }
+      parts.push(line !== ''
+        ? trf(t, 'progress.jobLastOutput', { line: line }, '最近输出：' + line)
+        : tr(t, 'progress.jobNoOutput', '还没有输出'))
       return parts.join(RECAP_SEP)
     }
 
@@ -2146,6 +2292,7 @@ window.__ModuleLoader__.load({
       var lastJobProgressAt = useRef(0)
       var jobLineCache = useRef({})
       var [jobsSnapshot, setJobsSnapshot] = useState(null)
+      var goalCache = useRef({ key: '', text: '' })
 
       // 切换会话时清掉上一会话的摘要、静默标记和请求去重键。
       useEffect(function () {
@@ -2159,6 +2306,7 @@ window.__ModuleLoader__.load({
         reportedJobs.current = {}
         lastJobProgressAt.current = 0
         jobLineCache.current = {}
+        goalCache.current = { key: '', text: '' }
         setJobsSnapshot(null)
       }, [sessionId])
 
@@ -2351,7 +2499,7 @@ window.__ModuleLoader__.load({
           }
         }
         if (!hasSomething) return
-        var entry = jobProgressEntryOf(liveJobs, view, cfg, t, activeUiLang(), now, jobGoalOf(entries, view.turn))
+        var entry = jobProgressEntryOf(liveJobs, view, cfg, t, activeUiLang(), now, turnGoalOf(entries, view.turn))
         if (entry === null) return
         var key = entry.turn + ':' + entry.anchor + ':' + entry.bucket
         if (reportedJobs.current[key] === true) return
@@ -2397,9 +2545,17 @@ window.__ModuleLoader__.load({
       // 运行中先展示本地活动；语义摘要只在上一条轮次结束后出现，避免把旧摘要说成这一轮。
       var visibleSummary = summary !== null && summary.turn === view.turn && !running ? summary : null
       var hasLiveJobs = liveJobs.length > 0
-      var segments = buildTurnSegments(view, cfg, t, visibleSummary, stickyProgress, liveJobs)
+      // 这一轮的要求：按「会话 + 轮次」缓存，避免每秒重扫整个事件窗口；窗口里还没有
+      // 消息时（turn/start 先到、user/message 后到）继续重算，直到拿到为止。
+      // 键里带会话，切走再切回同一轮次时不会把上一个会话的要求留在这行上。
+      var goalKey = sessionId + ':' + view.turn
+      if (view.turn > 0 && (goalCache.current.key !== goalKey || goalCache.current.text === '')) {
+        goalCache.current = { key: goalKey, text: turnGoalOf(entries, view.turn) }
+      }
+      var goalText = goalCache.current.key === goalKey ? goalCache.current.text : ''
+      var segments = buildTurnSegments(view, cfg, t, visibleSummary, stickyProgress, liveJobs, goalText)
       // 可见性可以「钉住」，状态永远用实时静默判断，避免恢复输出后还显示无新输出。
-      var status = cfg.progress ? turnStatusInfo(view, t, stalled) : null
+      var status = cfg.progress ? turnStatusInfo(view, t, stalled, { repeat: !activityChainShown(view, cfg) }) : null
       var showRunning = (view.running && (cfg.activity || (cfg.progress && stickyProgress))) || hasLiveJobs
       // 完成态只在三种情况下出现：有摘要、用户开了活动流水、或这一轮曾经无新输出。
       // 普通轮次结束后不常驻一条「已完成」，否则又变回噪音。
@@ -2412,7 +2568,9 @@ window.__ModuleLoader__.load({
       var progressInterval = formatDuration(cfg.stallMs, t)
       var progressHint = trf(t, 'turn.progressHint', { duration: progressInterval }, '每 ' + progressInterval + ' 在「会话回顾」记一条进度')
       var children = [h(PluginStyles, { key: 'style', scope: 'turn-line' })]
-      if (status !== null) children.push(h(StatusChip, { key: 'status', kind: status.kind, label: status.label, live: true, t: t }))
+      // 运行中的徽标是「现在在做什么」，每一步都会换词；让它做 live region 会一直
+      // 打断读屏。只在异常态和结束态播报：无新输出 / 等你回答 / 待批准 / 出错。
+      if (status !== null) children.push(h(StatusChip, { key: 'status', kind: status.kind, label: status.label, live: status.kind !== 'running', t: t }))
       for (var index = 0; index < segments.length; index += 1) {
         if (index > 0) children.push(h('span', { key: 'sep' + index, className: 'wdxt-sep' }, '·'))
         children.push(h('span', {
@@ -4348,7 +4506,8 @@ window.__ModuleLoader__.load({
     exports.progressEntryOf = progressEntryOf
     exports.jobProgressEntryOf = jobProgressEntryOf
     exports.jobProgressDueOf = jobProgressDueOf
-    exports.jobGoalOf = jobGoalOf
+    exports.jobGoalOf = turnGoalOf
+    exports.turnGoalOf = turnGoalOf
     exports.jobDisplayName = jobDisplayName
     exports.liveJobsOf = liveJobsOf
     exports.jobOutputLine = jobOutputLine
