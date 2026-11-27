@@ -1042,10 +1042,10 @@ test('progress fires while tools keep running without a reply', () => {
   assert.equal(entry.digest.reasoning, '继续排查')
   assert.equal(entry.windowMs, 600000)
 
+  // 这一行不再本地拼时间窗摘要（思考碎片里的代码会直接上屏），改由「会话回顾」
+  // 里 Host 写好的那一条负责；没有存下来的摘要时不硬凑一段。
   const segments = client.buildTurnSegments(view, { progress: true, stallMs: 600000, activity: false, summary: true }, t, null)
-  // 正文区已经在显示当前动作（查找 foo），这一行不再重复。
-  assert.deepEqual([...segments.map((segment) => segment.key)], ['progress'])
-  assert.equal(segments[0].text, '第 1 轮 · 未回复 19 分')
+  assert.deepEqual([...segments.map((segment) => segment.key)], [])
   assert.equal(client.turnStatusInfo(view, t, false).label, '')
 
   // 一旦有正文回复，等待重新计时；工具事件不会把它重置。
@@ -1054,6 +1054,48 @@ test('progress fires while tools keep running without a reply', () => {
   assert.equal(repliedView.lastReplyAt, 1000000)
   assert.equal(repliedView.quietMs, 150000)
   assert.equal(repliedView.silenceMs, 150000)
+})
+
+test('running line shows the latest stored progress summary from Session review', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+  const client = loaded.factory((id) => {
+    if (id === 'react') return { createElement() {}, useState() {}, useEffect() {}, useRef() {}, useLayoutEffect() {} }
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+  const t = (key) => key
+
+  // 面板里的回顾历史：本轮两条进度、一条上一轮摘要、一条后台任务进度。
+  const at = 1700000000000
+  const items = [
+    { kind: 'summary', turn: 4, at: at - 4 * 3600000, summary: '旧的摘要' },
+    { kind: 'progress', turn: 4, at: at - 600000, bucket: 1, summary: '批量数量输入正抽成共用组件，专业评分卡接入全量模式。' },
+    { kind: 'progress', turn: 4, at: at, bucket: 2, summary: '前端检查待跟进；图床和分析卡在同步替换。' },
+    { kind: 'progress', turn: 3, at: at + 60000, bucket: 1, summary: '上一轮的进度，不该串到这一轮。' },
+    { kind: 'progress', turn: 4, at: at + 600000, bucket: 1, jobId: 'bash-1', summary: '后台任务还在跑，不属于这一轮的进展。' },
+  ]
+  const note = client.latestProgressNote(items, 4)
+  assert.equal(note.turn, 4)
+  assert.equal(note.text, '前端检查待跟进；图床和分析卡在同步替换。')
+  // 本轮没写过进度、或只有后台任务进度时不拿别的轮凑数。
+  assert.equal(client.latestProgressNote(items, 5), null)
+  assert.equal(client.latestProgressNote([{ kind: 'summary', turn: 4, at: at, summary: '只有摘要' }], 4), null)
+  assert.equal(client.latestProgressNote([], 4), null)
+
+  // 一段话原样放进这一行：不截、不拼「第几轮」、不拼时间窗，清掉重复的时长。
+  const view = { turn: 4, running: true, quietMs: 25 * 60000, elapsedMs: 25 * 60000, status: 'running', startedAt: at - 25 * 60000, lastReplyAt: at - 25 * 60000, silenceMs: 60000, actions: [], steps: 1 }
+  const cfg = { progress: true, stallMs: 600000, activity: false, summary: false, jobs: false }
+  const segments = client.buildTurnSegments(view, cfg, t, null, [], note.text)
+  assert.deepEqual([...segments.map((segment) => segment.key)], ['note'])
+  assert.equal(segments[0].className, 'wdxt-note')
+  assert.equal(segments[0].text, note.text)
+  assert.doesNotMatch(segments[0].text, /未回复|第 4 轮|1–20 分/)
+  // 没有摘要时这一行不留空壳。
+  const empty = client.buildTurnSegments(view, cfg, t, null, [], '')
+  assert.deepEqual([...empty.map((segment) => segment.key)], [])
 })
 
 test('progress stays quiet while the turn waits for the user', () => {
@@ -1210,9 +1252,9 @@ test('background jobs surface their latest output and record progress', () => {
   assert.equal(client.jobSegmentText([], t, true), '')
 
   const segments = client.buildTurnSegments({ ...view, running: true }, { progress: true, stallMs: 600000, activity: false, summary: true, jobs: true }, t, null, jobs)
-  assert.deepEqual([...segments.map((item) => item.key)], ['progress', 'jobs'])
+  assert.deepEqual([...segments.map((item) => item.key)], ['jobs'])
   const off = client.buildTurnSegments({ ...view, running: true }, { progress: true, stallMs: 600000, activity: false, summary: true, jobs: false }, t, null, jobs)
-  assert.deepEqual([...off.map((item) => item.key)], ['progress'])
+  assert.deepEqual([...off.map((item) => item.key)], [])
 
   // 只在「本轮结束」或「停在等你回答」时单独记后台任务进度。
   const cfg = { progress: true, jobs: true, stallMs: 600000 }
@@ -1339,6 +1381,37 @@ test('recap history filters summaries and progress entries', () => {
   assert.doesNotMatch(json, /旧摘要/)
 })
 
+test('expanded line reuses the recap reply from history instead of the request', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+  const client = loaded.factory((id) => {
+    if (id === 'react') return { createElement() {}, useState() {}, useEffect() {}, useRef() {}, useLayoutEffect() {} }
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+
+  const at = 1700000000000
+  const items = [
+    { kind: 'answered', turn: 4, at: at, summary: '旧摘要', user: '上一轮的要求', assistant: '上一轮的回复' },
+    { kind: 'progress', turn: 4, at: at + 1000, bucket: 1, summary: '进度摘要' },
+    { kind: 'answered', turn: 4, at: at + 2000, summary: '新摘要', user: '这一轮的要求', assistant: '这一轮的回复原文' },
+    { kind: 'answered', turn: 5, at: at + 3000, summary: '别的轮次', user: '别的要求', assistant: '不属于这一轮' },
+  ]
+  const hit = client.latestTurnReply(items, 4)
+  assert.equal(hit.reply, '这一轮的回复原文')
+  assert.equal(hit.question, '')
+  // 只停在提问的那一轮展开后给「待回答」，没有回复可给。
+  const asked = client.latestTurnReply([{ kind: 'question', turn: 4, at: at, question: '要用哪个模型？', assistant: '' }], 4)
+  assert.equal(asked.reply, '')
+  assert.equal(asked.question, '要用哪个模型？')
+  // 只有进度记录、或轮次不符时不给。
+  assert.equal(client.latestTurnReply([{ kind: 'progress', turn: 4, at: at, summary: '进度' }], 4), null)
+  assert.equal(client.latestTurnReply(items, 6), null)
+  assert.equal(client.latestTurnReply([], 4), null)
+})
+
 test('turn view reports silence, status and progress segments', () => {
   const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
   let loaded = null
@@ -1371,9 +1444,10 @@ test('turn view reports silence, status and progress segments', () => {
   // 还在跑工具时徽标不报当前动作：正文区的过程行已经写了「正在运行命令」。
   assert.equal(client.turnStatusInfo(view, t, false).label, '')
 
-  const runningSegments = client.buildTurnSegments(view, { progress: true, stallMs: 45000, activity: false, summary: true }, t, null)
-  assert.deepEqual([...runningSegments.map((segment) => segment.key)], ['progress'])
-  assert.equal(runningSegments[0].text, '第 2 轮 · 未回复 1 分 39 秒')
+  // 运行中这一行给「会话回顾」里的最新进度，不再报「第 2 轮 · 未回复 1 分 39 秒」。
+  const runningSegments = client.buildTurnSegments(view, { progress: true, stallMs: 45000, activity: false, summary: true }, t, null, [], '修登录框的校验，等测试结果。')
+  assert.deepEqual([...runningSegments.map((segment) => segment.key)], ['note'])
+  assert.equal(runningSegments[0].text, '修登录框的校验，等测试结果。')
 
   const completedView = client.deriveTurnView([
     ...entries,
@@ -1383,8 +1457,30 @@ test('turn view reports silence, status and progress segments', () => {
   const completedStatus = client.turnStatusInfo(completedView, t, false)
   assert.equal(completedStatus.kind, 'done')
   const completedSegments = client.buildTurnSegments(completedView, { progress: true, stallMs: 45000, activity: false, summary: true }, t, { text: '改完测试' })
-  assert.deepEqual([...completedSegments.map((segment) => segment.key)], ['progress', 'summary'])
-  assert.match(completedSegments[0].text, /用时/)
+  assert.deepEqual([...completedSegments.map((segment) => segment.key)], ['meta', 'summary'])
+  // 用时压成 mm:ss，完整说法只留在 title。
+  assert.equal(completedSegments[0].text, '0:08')
+  assert.match(completedSegments[0].title, /第 2 轮 · 用时 8 秒/)
+  assert.equal(client.compactDuration(8 * 60000 + 40000), '8:40')
+  assert.equal(client.compactDuration(3600000 + 5 * 60000 + 30000), '1:05:30')
+})
+
+test('line chrome uses one icon scale and shared action-button geometry', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  // 行尾三个操作键：同一个 20×18 命中区、同一个圆角，关闭键也带键盘聚焦轮廓。
+  assert.match(code, /\.wdxt-open,\.wdxt-expand,\.wdxt-close\{width:20px;height:18px/)
+  assert.match(code, /\.wdxt-open:focus-visible,\.wdxt-expand:focus-visible,\.wdxt-close:focus-visible\{opacity:1;outline:/)
+  // 状态只用颜色区分：绿=完成、红=出错/拦截、橙=等你反馈或卡住、蓝=运行中；灰=取消/中断。
+  assert.match(code, /\.wdxt-status\[data-kind="done"\]\{color:var\(--dsw-alias-state-success-primary\)\}/)
+  assert.match(code, /\.wdxt-status\[data-kind="error"\],\.wdxt-status\[data-kind="blocked"\]\{color:var\(--dsw-alias-state-error-primary\)/)
+  assert.match(code, /\.wdxt-status\[data-kind="running"\]\{color:var\(--dsw-alias-state-business-primary\)/)
+  assert.match(code, /\.wdxt-status\[data-kind="stalled"\]\{color:var\(--dsw-alias-state-warn-label\)/)
+  // 只留色点的状态不需要胶囊底色。
+  assert.match(code, /\.wdxt-status\.wdxt-statusBare\{border:0;background:transparent;padding:0;max-width:none\}/)
+  // 进度表盘 12px。
+  assert.match(code, /\.wdxt-metaIcon\{width:12px;height:12px/)
+  // 详情块的淡入也遵守 reduced motion，和行本身一致。
+  assert.match(code, /\.wdxt-row,\.wdxt-detail\{animation:none\}/)
 })
 
 test('line settings default to a 10 minute progress interval', () => {
@@ -1423,9 +1519,10 @@ test('turn line renders a silent running turn with a progress shortcut', () => {
   const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
   runInNewContext(code, sandbox)
 
+  const now = Date.now()
   const entries = [
-    { type: 'event', event: { type: 'turn/start', seq: 1, time: 1000, data: { turn: 2 } } },
-    { type: 'event', event: { type: 'tool/call', seq: 2, time: 2000, data: { callId: 'c1', name: 'bash', arguments: '{"command":"job_output"}', turn: 2, step: 1 } } },
+    { type: 'event', event: { type: 'turn/start', seq: 1, time: now - 20 * 60000, data: { turn: 2 } } },
+    { type: 'event', event: { type: 'tool/call', seq: 2, time: now - 19 * 60000, data: { callId: 'c1', name: 'bash', arguments: '{"command":"job_output"}', turn: 2, step: 1 } } },
   ]
   let calls = 0
   const react = {
@@ -1458,8 +1555,10 @@ test('turn line renders a silent running turn with a progress shortcut', () => {
   assert.match(json, /wdxt-row/)
   assert.match(json, /data-state":"stalled/)
   assert.match(json, /无新输出/)
-  // 这次调用已经在正文区显示，这行不再复述。
-  assert.doesNotMatch(json, /运行命令/)
+  // 没有存下来的进度摘要时不本地拼一段；这行靠状态词和入口保住可达性，
+  // 也不重复正文区正在算的「未回复 19 分」。
+  assert.doesNotMatch(json, /wdxt-note/)
+  assert.doesNotMatch(json, /未回复|第 2 轮/)
   assert.match(json, /wdxt-open/)
   ;(function walk(node) {
     if (!node || typeof node !== 'object') return
@@ -1479,13 +1578,16 @@ test('turn line shows a long busy turn that has no reply, and hides once replied
   const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
   runInNewContext(code, sandbox)
 
-  function renderLine(entries) {
+  function renderLine(entries, note, expandedTurn) {
     let calls = 0
+    // 组件里的 useState 顺序：entries / tick / summary / dismissedTurn / waitedTurn /
+    // jobsSnapshot / progressNote / noteRevision / expandedTurn。
+    const values = [entries, 0, null, 0, 0, null, note || null, 0, expandedTurn || 0]
     const react = {
       createElement(type, props, ...children) { return { type, props: props || {}, children } },
       useState(initial) {
         calls += 1
-        return [calls === 1 ? entries : initial, () => {}]
+        return [calls <= values.length ? values[calls - 1] : initial, () => {}]
       },
       useEffect() {},
       useRef(value) { return { current: value } },
@@ -1510,24 +1612,73 @@ test('turn line shows a long busy turn that has no reply, and hides once replied
   const now = Date.now()
   const busy = [
     { type: 'event', event: { type: 'turn/start', seq: 1, time: now - 19 * 60000, data: { turn: 2 } } },
-    { type: 'event', event: { type: 'tool/call', seq: 2, time: now - 3 * 60000, data: { callId: 'c1', name: 'bash', arguments: '{"command":"job_output"}', turn: 2, step: 1 } } },
+    { type: 'event', event: { type: 'tool/call', seq: 2, time: now - 17 * 60000, data: { callId: 'c1', name: 'bash', arguments: '{"command":"job_output"}', turn: 2, step: 1 } } },
+    { type: 'event', event: { type: 'tool/result', seq: 3, time: now - 16 * 60000, data: { turn: 2, step: 1, message: { source: { callId: 'c1' } } } } },
+    { type: 'event', event: { type: 'tool/call', seq: 4, time: now - 3 * 60000, data: { callId: 'c2', name: 'bash', arguments: '{"command":"job_output"}', turn: 2, step: 2 } } },
   ]
-  const line = renderLine(busy)
+  const note = { turn: 2, text: '批量数量输入正抽成共用组件，图床和分析卡在同步替换，前端检查待跟进。' }
+  const line = renderLine(busy, note)
   assert.ok(line !== null)
   const json = JSON.stringify(line)
   assert.match(json, /data-state":"running/)
-  // 运行标记只剩一个脉冲点（label 为空），不再重复正文区的「运行命令」。
+  // 运行标记只剩一个脉冲点（label 为空），当前动作仍由正文区的过程行负责。
   assert.match(json, /"label":"","live":false/)
-  assert.doesNotMatch(json, /运行命令/)
-  assert.match(json, /第 2 轮 · 未回复 19 分/)
+  // 这一段就是「会话回顾」里最新一条进度，原样上屏；不再写和过程行重复的「第 2 轮 · 未回复 19 分」。
+  assert.match(json, /wdxt-note/)
+  assert.match(json, /批量数量输入正抽成共用组件/)
+  assert.doesNotMatch(json, /未回复|第 2 轮/)
   assert.doesNotMatch(json, /进行中|等待/)
+  // 长进度会截断，所以它和摘要一样可展开：单行留状态点，完整进度进详情块。
+  assert.match(json, /wdxt-expand/)
+  const expandedJson = JSON.stringify(renderLine(busy, note, 2))
+  assert.match(expandedJson, /wdxt-detailText/)
+  assert.match(expandedJson, /进度/)
+  assert.match(expandedJson, /批量数量输入正抽成共用组件/)
+  assert.doesNotMatch(expandedJson, /wdxt-note/)
 
   // 同样的长时间运行，只要最近给过正文回复，就不再提示。
   const replied = [...busy, { type: 'event', event: { type: 'assistant/message', seq: 3, time: now - 2 * 60000, data: { turn: 2, message: { role: 'assistant', content: [{ type: 'text', text: '先说明一下当前进展' }] } } } }]
   assert.equal(renderLine(replied), null)
 })
 
-test('completed turn line expands into full goal and recap text', () => {
+test('status reads as one colored dot and the turn meta as #N + mm:ss', () => {
+  const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
+  let loaded = null
+  const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
+  runInNewContext(code, sandbox)
+  const react = {
+    createElement(type, props, ...children) { return { type, props: props || {}, children } },
+    useState(initial) { return [initial, () => {}] },
+    useEffect() {},
+    useRef(value) { return { current: value } },
+    useLayoutEffect() {},
+  }
+  const client = loaded.factory((id) => {
+    if (id === 'react') return react
+    if (id === '@deepseek-ai/dsh-client-ui-primitives') return {}
+    throw new Error(`unexpected require: ${id}`)
+  })
+
+  // 完成 = 一个静态绿点（颜色在 CSS 的 data-kind 上），状态词进 title / 无障碍标签。
+  const doneChip = client.StatusChip({ kind: 'done', label: '已完成', live: true })
+  assert.equal(doneChip.props.className, 'wdxt-status wdxt-statusBare')
+  assert.deepEqual([...doneChip.children[0].map((child) => child.props.key)], ['dot'])
+  assert.equal(doneChip.children[0][0].props.className, 'wdxt-dotStatic')
+  assert.equal(doneChip.props['aria-label'], '已完成')
+  assert.equal(doneChip.props.title, '已完成')
+  // 异常态点后仍然写字：「出错 / 待批准 bash / 无新输出 12 分」不是颜色能替代的。
+  const errorChip = client.StatusChip({ kind: 'error', label: '出错', live: true })
+  assert.equal(errorChip.props.className, 'wdxt-status')
+  assert.deepEqual([...errorChip.children[0].map((child) => child.props.key)], ['dot', 'label'])
+  assert.equal(errorChip.children[0][0].props.className, 'wdxt-dotStatic')
+  // 运行中是一个脉冲点，不带文字。
+  const runningChip = client.StatusChip({ kind: 'running', label: '' })
+  assert.equal(runningChip.props.className, 'wdxt-status wdxt-statusBare')
+  assert.equal(runningChip.children[0].length, 1)
+  assert.equal(runningChip.children[0][0].props.className, 'wdxt-dot')
+})
+
+test('completed turn line expands into the recap reply instead of the request', () => {
   const code = readFileSync(new URL('../client/client.js', import.meta.url), 'utf8')
   let loaded = null
   const sandbox = { window: { __ModuleLoader__: { load(spec) { loaded = spec } } }, console, setTimeout, clearTimeout, AbortController }
@@ -1540,16 +1691,21 @@ test('completed turn line expands into full goal and recap text', () => {
     { type: 'event', event: { type: 'user/message', seq: 2, time: now - 1290000, data: { role: 'user', content: [{ type: 'text', text: longGoal }] } } },
     { type: 'event', event: { type: 'turn/end', seq: 3, time: now - 100000, data: { turn: 1, reason: { kind: 'stop' } } } },
   ]
-  const summaryState = { text: '去重状态栏与上方重复信息；运行中不再报本轮耗时，动作和思考交给正文区。', turn: 1 }
+  const summaryState = {
+    text: '去重状态栏与上方重复信息；运行中不再报本轮耗时，动作和思考交给正文区。',
+    turn: 1,
+    reply: '改完后的回复原文：状态词换成图标，轮次和用时压成 #1 · 1:30，摘要因此多出半行宽度；测试都过了。',
+    question: '',
+  }
 
-  function render(expandedTurn) {
+  function render(expandedTurn, draft) {
     let calls = 0
     const pressed = []
     const react = {
       createElement(type, props, ...children) { return { type, props: props || {}, children } },
       useState(initial) {
         calls += 1
-        const values = [entries, 0, summaryState, 0, 0, null, expandedTurn]
+        const values = [entries, 0, summaryState, 0, 0, null, null, 0, expandedTurn]
         return [calls <= values.length ? values[calls - 1] : initial, (value) => { pressed.push(value) }]
       },
       useEffect() {},
@@ -1567,7 +1723,7 @@ test('completed turn line expands into full goal and recap text', () => {
       readFeed: () => null,
       openProgress: () => {},
       useSession: () => false,
-      useInput: () => ({ draft: '', attachmentIds: [] }),
+      useInput: () => ({ draft: draft || '', attachmentIds: [] }),
       useSettings: () => ({ value: { recap: true, recapProgress: true, recapStallSeconds: 600 } }),
     })
     return { line, pressed }
@@ -1578,27 +1734,56 @@ test('completed turn line expands into full goal and recap text', () => {
   assert.match(collapsedJson, /wdxt-expand/)
   assert.match(collapsedJson, /"aria-expanded":false/)
   assert.doesNotMatch(collapsedJson, /wdxt-detailText/)
+  // 完成态：一个对勾 + `#1 · ◷ mm:ss`，不再把「已完成 / 第 1 轮 · 用时 x 分 y 秒」写成大字。
+  assert.match(collapsedJson, /wdxt-meta/)
+  assert.match(collapsedJson, /#1/)
   // 单行只放进度和摘要，不展示「这一轮的要求」——空间留给前面两段。
   assert.match(collapsedJson, /去重状态栏与上方重复信息/)
-  assert.doesNotMatch(collapsedJson, /wdxt-goal/)
   assert.doesNotMatch(collapsedJson, new RegExp(longGoal))
 
   const expanded = render(1)
   const expandedJson = JSON.stringify(expanded.line)
   assert.match(expandedJson, /wdxt-detailText/)
-  assert.match(expandedJson, /本轮要求/)
-  assert.match(expandedJson, new RegExp(longGoal))
-  assert.match(expandedJson, /"aria-expanded":true/)
+  // 展开后是「回复」+「摘要」：用户刚发的那句话不再抄一遍。
+  assert.match(expandedJson, /回复/)
+  assert.match(expandedJson, /改完后的回复原文/)
+  assert.match(expandedJson, /摘要/)
   assert.match(expandedJson, /去重状态栏与上方重复信息/)
+  assert.match(expandedJson, /"aria-expanded":true/)
+  assert.doesNotMatch(expandedJson, /本轮要求/)
+  assert.doesNotMatch(expandedJson, new RegExp(longGoal))
 
-  // 展开按钮按当前状态切换收 / 展。
+  // 行尾的「展开」只剩一个 ▾ 图标，文字不再占位；点一下仍然切到展开态。
+  const expandNodes = []
+  const openNodes = []
   ;(function walk(node) {
     if (!node || typeof node !== 'object') return
     if (Array.isArray(node)) { node.forEach(walk); return }
-    if (node.props && node.props.className === 'wdxt-expand' && typeof node.props.onClick === 'function') node.props.onClick()
+    if (node.props && node.props.className === 'wdxt-expand') expandNodes.push(node)
+    if (node.props && node.props.className === 'wdxt-open') openNodes.push(node)
     for (const child of node.children || []) walk(child)
   })(collapsed.line)
+  assert.equal(expandNodes.length, 1)
+  const expandIcon = expandNodes[0].children[0]
+  assert.equal(expandIcon.type, 'svg')
+  assert.equal(expandIcon.props['aria-hidden'], 'true')
+  assert.equal(expandNodes[0].props['aria-expanded'], false)
+  assert.equal(expandNodes[0].children.length, 1)
+  // 和「›」同一套箭头：同一个 16 的 viewBox、同样的 14px 尺寸，视觉大小才一致。
+  assert.equal(openNodes.length, 1)
+  const openIcon = openNodes[0].children[0]
+  assert.equal(openIcon.props.width, 14)
+  assert.equal(openIcon.props.height, 14)
+  assert.equal(expandIcon.props.width, 14)
+  assert.equal(expandIcon.props.height, 14)
+  assert.equal(expandIcon.props.viewBox, openIcon.props.viewBox)
+  expandNodes[0].props.onClick()
   assert.deepEqual(collapsed.pressed, [1])
+
+  // 正在输入时这一行仍然在；只有发出去（新一轮开始）才让位。
+  const typing = render(0, '准备发一条新消息')
+  assert.ok(typing.line !== null)
+  assert.match(JSON.stringify(typing.line), /wdxt-meta/)
 })
 
 test('running line leaves the action to the transcript and only reports no-reply time', () => {
@@ -1622,11 +1807,12 @@ test('running line leaves the action to the transcript and only reports no-reply
   }
 
   // 纯思考：正文区的过程行已经在显示这句思考，徽标和活动段都不复述。
-  const thinking = client.deriveTurnView([
+  const thinkingEntries = [
     start,
     step,
     { type: 'transient', event: { type: 'assistant/live-chunk', seq: 5, time: 1000, data: { turn: 7, step: 1, chunk: { type: 'reasoning-delta', text: '先看依赖，再跑测试' } } } },
-  ], 600000)
+  ]
+  const thinking = client.deriveTurnView(thinkingEntries, 600000)
   assert.equal(client.turnStatusInfo(thinking, t, false).label, '')
   const thinkingSegments = client.buildTurnSegments(thinking, { progress: false, stallMs: 600000, activity: true, summary: false }, t, null)
   assert.deepEqual([...thinkingSegments.map((segment) => segment.key)], [])
@@ -1638,34 +1824,41 @@ test('running line leaves the action to the transcript and only reports no-reply
   const busySegments = client.buildTurnSegments(busy, { progress: false, stallMs: 600000, activity: true, summary: false }, t, null)
   assert.deepEqual([...busySegments.map((segment) => segment.key)], ['activity'])
   assert.equal(busySegments[0].text, '运行命令 ×4')
-  // 默认关闭活动流水时，正文区之外的这行没有任何动作片段。
+  // 默认关闭活动流水时，正文区之外的这行没有任何动作片段；还没跑满一个间隔，
+  // 也没有可回看的时间窗。
   const busyDefault = client.buildTurnSegments(busy, { progress: true, stallMs: 600000, activity: false, summary: false }, t, null)
-  assert.deepEqual([...busyDefault.map((segment) => segment.key)], ['progress'])
+  assert.deepEqual([...busyDefault.map((segment) => segment.key)], [])
 
   // 结果回来、下一步还没开始：同样不报「处理结果」。
   const handled = client.deriveTurnView([...many, result('c4', 8000)], 70000)
   assert.equal(client.turnStatusInfo(handled, t, false).label, '')
 
-  // 中途回复过：只报「未回复」自己的计时，不再复述正文区已经在算的本轮耗时。
+  // 中途回复过，本轮耗时和「未回复」就不再是同一段时间。
   const replied = client.deriveTurnView([
     start,
     bash('c1', 60000),
     { type: 'event', event: { type: 'assistant/message', seq: 6, time: 600000, data: { turn: 7, message: { role: 'assistant', content: [{ type: 'text', text: '先说结论' }] } } } },
   ], 1500000)
   assert.equal(client.turnStatusInfo(replied, t, false).label, '')
-  const repliedSegments = client.buildTurnSegments(replied, { progress: true, stallMs: 600000, activity: false, summary: false }, t, null)
-  assert.equal(repliedSegments[0].text, '第 7 轮 · 未回复 15 分')
+  // 之后一刻钟又没动静：没有可回看的时间窗，连「未回复 15 分」也不再写——
+  // 正文区的过程行已经在算同一个秒数，真卡住时交给状态词「无新输出」。
+  const repliedCfg = { progress: true, stallMs: 600000, activity: false, summary: false }
+  assert.equal(client.latestProgressNote([], replied.turn), null)
+  const repliedSegments = client.buildTurnSegments(replied, repliedCfg, t, null, [], '')
+  assert.deepEqual([...repliedSegments.map((segment) => segment.key)], [])
 
-  // 截图里的那种情况：思考 + 目标 + 欠回复，正文区已有动作和思考，这行只报进度与目标。
-  const liveSegments = client.buildTurnSegments(thinking, { progress: true, stallMs: 600000, activity: false, summary: false, jobs: false }, t, null, [], '先看依赖，再跑测试')
-  assert.deepEqual([...liveSegments.map((segment) => segment.key)], ['progress', 'goal'])
-  assert.equal(liveSegments[0].text, '第 7 轮 · 未回复 10 分')
-  assert.equal(liveSegments[1].text, '「先看依赖，再跑测试」')
+  // 截图里的那种情况：思考 + 目标 + 欠回复。正文区已有此刻的动作和思考，
+  // 这一行改报前面每个完整时间窗在做什么，不再重复「未回复 10 分」。
+  const liveCfg = { progress: true, stallMs: 600000, activity: false, summary: false, jobs: false }
+  const liveSegments = client.buildTurnSegments(thinking, liveCfg, t, null, [], '读完依赖清单，正在跑测试用例。')
+  assert.deepEqual([...liveSegments.map((segment) => segment.key)], ['note'])
+  assert.equal(liveSegments[0].text, '读完依赖清单，正在跑测试用例。')
 
-  // 刚回复过、还没到下一条进度时，只报轮次，不写「未回复 0 秒」。
+  // 刚回复过、还没到下一条时间窗时，这行不再只写一个轮次。
   const fresh = client.deriveTurnView([start], 0)
-  const freshSegments = client.buildTurnSegments(fresh, { progress: true, stallMs: 600000, activity: false, summary: false, jobs: false }, t, null)
-  assert.equal(freshSegments[0].text, '第 7 轮')
+  assert.equal(client.latestProgressNote([], fresh.turn), null)
+  const freshSegments = client.buildTurnSegments(fresh, liveCfg, t, null, [], '')
+  assert.deepEqual([...freshSegments.map((segment) => segment.key)], [])
 
   // 等回答 / 待批准仍然优先于运行态；这一行的活动段给那句问题本身。
   const waiting = client.deriveTurnView([
@@ -1701,18 +1894,18 @@ test('finished and waiting states name the reason, the approval target and the r
     { type: 'event', event: { type: 'turn/end', time: now - 540000, data: { turn: 3, reason: { kind: 'error', error: { message: 'HTTP 429 rate limit exceeded', code: 'PROVIDER_RATE_LIMIT' } } } } },
   ], now)
   assert.equal(client.turnStatusInfo(failed, t, false).kind, 'error')
-  const failedSegments = client.buildTurnSegments(failed, settings, t, null, [], '把输入框上那一行讲清楚')
-  assert.deepEqual([...failedSegments.map((segment) => segment.key)], ['progress', 'reason', 'goal'])
-  assert.equal(failedSegments[0].text, '第 3 轮 · 用时 1 分')
+  const failedSegments = client.buildTurnSegments(failed, settings, t, null, [])
+  assert.deepEqual([...failedSegments.map((segment) => segment.key)], ['meta', 'reason'])
+  assert.equal(failedSegments[0].text, '1:00')
+  assert.equal(failedSegments[0].title, '第 3 轮 · 用时 1 分')
   assert.equal(failedSegments[1].text, '原因：HTTP 429 rate limit exceeded')
-  assert.equal(failedSegments[2].text, '「把输入框上那一行讲清楚」')
 
   // 没有 message 时退回错误码，而不是直接丢掉。
   const coded = client.deriveTurnView([
     ...start,
     { type: 'event', event: { type: 'turn/end', time: now - 540000, data: { turn: 3, reason: { kind: 'error', error: { code: 'PROVIDER_RATE_LIMIT' } } } } },
   ], now)
-  const codedSegments = client.buildTurnSegments(coded, settings, t, null, [], '')
+  const codedSegments = client.buildTurnSegments(coded, settings, t, null, [])
   assert.equal(codedSegments[1].text, '原因：PROVIDER_RATE_LIMIT')
 
   // 待批准：说清楚批准哪个工具。
@@ -1735,11 +1928,11 @@ test('finished and waiting states name the reason, the approval target and the r
   assert.equal(client.turnStatusInfo(idle, t, true).label, '无新输出 1 小时')
   assert.equal(client.formatDuration(3 * 3600000, t), '3 小时')
 
-  // 要求太长时截断，不抢走时长和状态的位置。
+  // 这一轮的要求不再上屏（展开也没有）：一行已经放不下一段话，
+  // 展开时换成同一份回顾里的「回复」。
   const longGoal = '把输入框上方那一行的状态词从「进行中」改成它现在在做什么，顺带把重复的两个时长合并成一句，顺便再补一句这一轮到底在为什么干活'
-  const longSegments = client.buildTurnSegments(failed, settings, t, null, [], longGoal)
-  assert.ok(longSegments[2].text.length <= 44, longSegments[2].text)
-  assert.match(longSegments[2].text, /…」$/)
+  const longSegments = client.buildTurnSegments(failed, settings, t, null, [])
+  assert.doesNotMatch(longSegments.map((segment) => segment.text).join(' '), new RegExp(longGoal.slice(0, 6)))
 })
 
 test('relief panel shows recap and aside tabs, defaulting to recap', () => {

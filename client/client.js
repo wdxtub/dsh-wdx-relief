@@ -88,13 +88,16 @@ window.__ModuleLoader__.load({
       '.wdxt-root[data-placement="below"]{width:auto;max-width:none;flex:1 1 auto;min-width:0;padding:0}',
       '.wdxt-row{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);min-height:28px;align-items:center;gap:6px;padding:4px 6px 4px 10px;font-size:12px;line-height:18px;display:flex;animation:wdxt-fade .18s ease-out;container-type:inline-size}',
       '@keyframes wdxt-fade{from{opacity:0;transform:translateY(2px)}to{opacity:1;transform:none}}',
-      '@media (prefers-reduced-motion:reduce){.wdxt-row{animation:none}}',
+      '@media (prefers-reduced-motion:reduce){.wdxt-row,.wdxt-detail{animation:none}}',
       '.wdxt-row[data-state="running"]{border-color:var(--dsw-alias-state-business-tertiary)}',
       '.wdxt-row[data-state="stalled"]{border-color:var(--dsw-alias-state-warn-secondary)}',
       '.wdxt-row[data-state="waiting"]{border-color:var(--dsw-alias-state-warn-secondary)}',
       '.wdxt-seg{white-space:nowrap;overflow:hidden;text-overflow:ellipsis;min-width:0}',
       '.wdxt-progress{color:var(--dsw-alias-label-tertiary);flex:0 1 auto;min-width:0;font-variant-numeric:tabular-nums}',
-      '.wdxt-progressStalled{color:var(--dsw-alias-state-warn-label)}',
+      '.wdxt-note{color:var(--dsw-alias-label-secondary);flex:0 1 auto;min-width:0}',
+      '.wdxt-meta{color:var(--dsw-alias-label-tertiary);flex:none;align-items:center;gap:3px;font-variant-numeric:tabular-nums;display:inline-flex}',
+      '.wdxt-metaTurn{color:var(--dsw-alias-label-caption)}',
+      '.wdxt-metaIcon{width:12px;height:12px;flex:none;opacity:.85}',
       '.wdxt-activity{color:var(--dsw-alias-label-tertiary);flex:0 1 auto;max-width:46%}',
       '.wdxt-reason{color:var(--dsw-alias-label-secondary);flex:0 1 auto;max-width:52%;min-width:0}',
       '.wdxt-jobs{color:var(--dsw-alias-state-business-primary);flex:0 1 auto;max-width:52%}',
@@ -104,31 +107,30 @@ window.__ModuleLoader__.load({
       '.wdxt-statusLabel{min-width:0;overflow:hidden;text-overflow:ellipsis}',
       '@container (max-width:560px){.wdxt-activity{display:none}.wdxt-reason{max-width:36%}.wdxt-jobs{max-width:36%}}',
       '.wdxt-status[data-kind="running"]{color:var(--dsw-alias-state-business-primary);background:var(--dsw-alias-bg-base)}',
+      '.wdxt-status[data-kind="done"]{color:var(--dsw-alias-state-success-primary)}',
       '.wdxt-status[data-kind="stalled"]{color:var(--dsw-alias-state-warn-label);border-color:var(--dsw-alias-state-warn-secondary);background:var(--dsw-alias-bg-base)}',
       '.wdxt-status[data-kind="waiting"]{color:var(--dsw-alias-state-warn-label);border-color:var(--dsw-alias-state-warn-secondary);background:var(--dsw-alias-bg-base)}',
-      '.wdxt-status[data-kind="done"]{color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-base)}',
-      '.wdxt-status[data-kind="error"]{color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-secondary);background:var(--dsw-alias-bg-base)}',
+      '.wdxt-status[data-kind="error"],.wdxt-status[data-kind="blocked"]{color:var(--dsw-alias-state-error-primary);border-color:var(--dsw-alias-state-error-secondary);background:var(--dsw-alias-bg-base)}',
       '.wdxt-status[data-kind="aborted"],.wdxt-status[data-kind="interrupted"],.wdxt-status[data-kind="forked"]{color:var(--dsw-alias-label-caption);background:var(--dsw-alias-bg-base)}',
-      '.wdxt-status[data-kind="blocked"],.wdxt-status[data-kind="maxTokens"]{color:var(--dsw-alias-state-warn-label);border-color:var(--dsw-alias-state-warn-secondary);background:var(--dsw-alias-bg-base)}',
+      '.wdxt-status[data-kind="maxTokens"]{color:var(--dsw-alias-state-warn-label);border-color:var(--dsw-alias-state-warn-secondary);background:var(--dsw-alias-bg-base)}',
       '.wdxt-dot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none;animation:wdxt-pulse 1.4s ease-in-out infinite}',
-      // 运行中只留脉冲点：徽标不写词也就不需要胶囊的边框和底色，免得空出一块。
-      '.wdxt-status[data-kind="running"].wdxt-statusBare{border:0;background:transparent;padding:0;max-width:none}',
-      '.wdxt-dotStatic{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none;opacity:.65}',
+      // 只留色点的状态（运行中 / 完成）不需要胶囊的边框和底色，免得空出一块。
+      '.wdxt-status.wdxt-statusBare{border:0;background:transparent;padding:0;max-width:none}',
+      '.wdxt-dotStatic{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none;opacity:.8}',
       '@keyframes wdxt-pulse{0%,100%{opacity:.35;transform:scale(.8)}50%{opacity:1;transform:scale(1)}}',
       '@media (prefers-reduced-motion:reduce){.wdxt-dot{animation:none;opacity:1}}',
-      '.wdxt-check{font-size:10px;line-height:1;flex:none}',
-      '.wdxt-close{width:16px;height:16px;color:var(--dsw-alias-label-caption);cursor:pointer;opacity:0;background:0 0;border:0;border-radius:999px;flex:none;place-items:center;padding:0;font:inherit;font-size:12px;line-height:1;display:grid}',
-      '.wdxt-open{width:20px;height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:.7;background:0 0;border:0;border-radius:var(--dsw-radius-sm);flex:none;place-items:center;padding:0;font:inherit;font-size:14px;line-height:1;display:grid}',
-      '@media (hover:hover){.wdxt-open:hover{opacity:1;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}}',
-      '.wdxt-open:focus-visible{opacity:1;outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:1px}',
-      '.wdxt-expand{height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer;opacity:.7;background:0 0;border:0;border-radius:var(--dsw-radius-sm);flex:none;place-items:center;padding:0 4px;font:inherit;font-size:10px;line-height:1;display:grid}',
-      '@media (hover:hover){.wdxt-expand:hover{opacity:1;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}}',
-      '.wdxt-expand:focus-visible{opacity:1;outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:1px}',
-      '.wdxt-row:hover .wdxt-expand,.wdxt-expand:focus-visible{opacity:1}',
+      // 行尾三个图标键是同一组操作：同一个 20×18 命中区、同一个圆角与颜色，
+      // 只有「关闭」默认隐藏到悬停 / 聚焦再出现。
+      '.wdxt-open,.wdxt-expand,.wdxt-close{width:20px;height:18px;color:var(--dsw-alias-label-secondary);cursor:pointer;background:0 0;border:0;border-radius:var(--dsw-radius-sm);flex:none;place-items:center;padding:0;font:inherit;font-size:14px;line-height:1;display:grid}',
+      '.wdxt-open,.wdxt-expand{opacity:.7}',
+      '.wdxt-close{opacity:0}',
+      '@media (hover:hover){.wdxt-open:hover,.wdxt-expand:hover,.wdxt-close:hover{opacity:1;background:var(--dsw-alias-interactive-bg-hover);color:var(--dsw-alias-label-primary)}}',
+      '.wdxt-open:focus-visible,.wdxt-expand:focus-visible,.wdxt-close:focus-visible{opacity:1;outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:1px}',
+      '.wdxt-row:hover .wdxt-expand,.wdxt-row:hover .wdxt-close,.wdxt-expand:focus-visible,.wdxt-close:focus-visible{opacity:1}',
       // 展开时单行和详情块连成一张卡片：上半部去底圆角，详情块顶边不留缝。
       '.wdxt-root[data-expanded="true"] .wdxt-row{border-bottom-left-radius:0;border-bottom-right-radius:0}',
       // 操作键永远贴在右侧：展开后行里只剩短片段，auto margin 把这一组送到最右。
-      '.wdxt-actions{margin-left:auto;flex:none;align-items:center;display:flex}',
+      '.wdxt-actions{margin-left:auto;flex:none;align-items:center;gap:2px;display:flex}',
       '.wdxt-detail{box-sizing:border-box;border:.5px solid var(--dsw-alias-border-l1);border-top:0;border-radius:0 0 var(--dsw-radius-md) var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);color:var(--dsw-alias-label-secondary);padding:6px 10px 8px;font-size:11px;line-height:16px;max-height:min(240px,40vh);overflow:auto;display:flex;flex-direction:column;gap:4px;animation:wdxt-fade .18s ease-out}',
       '.wdxt-detailLine{margin:0;display:flex;gap:6px;min-width:0}',
       '.wdxt-detailLabel{color:var(--dsw-alias-label-caption);flex:none}',
@@ -304,9 +306,6 @@ window.__ModuleLoader__.load({
       'turn.dismiss': '本轮不再显示这一行',
       'turn.expand': '展开完整内容',
       'turn.collapse': '收起完整内容',
-      'turn.expandAction': '展开',
-      'turn.collapseAction': '收起',
-      'turn.detailGoal': '本轮要求',
       'turn.detailSummary': '摘要',
       'turn.detailJobs': '后台任务',
       'turn.detailActivity': '动作',
@@ -315,7 +314,6 @@ window.__ModuleLoader__.load({
       'turn.status.approval': '待批准',
       'turn.status.approvalFor': '待批准 {tool}',
       'turn.errorReason': '原因：{reason}',
-      'turn.goal': '「{goal}」',
       'turn.status.done': '已完成',
       'turn.status.aborted': '已取消',
       'turn.status.error': '出错',
@@ -323,9 +321,7 @@ window.__ModuleLoader__.load({
       'turn.status.interrupted': '已中断',
       'turn.status.maxTokens': '输出上限',
       'turn.status.forked': '已分叉',
-      'turn.headline': '第 {turn} 轮',
       'turn.took': '第 {turn} 轮 · 用时 {duration}',
-      'turn.unrepliedTurn': '第 {turn} 轮 · 未回复 {duration}',
       'turn.repeat': '{label} ×{count}',
       'turn.progressHint': '每 {duration} 在「会话回顾」记一条进度',
       'duration.seconds': '{s} 秒',
@@ -515,9 +511,6 @@ window.__ModuleLoader__.load({
       'turn.dismiss': 'Hide this line for this turn',
       'turn.expand': 'Show the full text',
       'turn.collapse': 'Collapse the full text',
-      'turn.expandAction': 'Expand',
-      'turn.collapseAction': 'Collapse',
-      'turn.detailGoal': 'Request',
       'turn.detailSummary': 'Recap',
       'turn.detailJobs': 'Background jobs',
       'turn.detailActivity': 'Actions',
@@ -526,7 +519,6 @@ window.__ModuleLoader__.load({
       'turn.status.approval': 'Waiting for approval',
       'turn.status.approvalFor': 'Approval: {tool}',
       'turn.errorReason': 'reason: {reason}',
-      'turn.goal': '"{goal}"',
       'turn.status.done': 'Done',
       'turn.status.aborted': 'Cancelled',
       'turn.status.error': 'Failed',
@@ -534,9 +526,7 @@ window.__ModuleLoader__.load({
       'turn.status.interrupted': 'Interrupted',
       'turn.status.maxTokens': 'Token limit',
       'turn.status.forked': 'Forked',
-      'turn.headline': 'Turn {turn}',
       'turn.took': 'Turn {turn} · {duration}',
-      'turn.unrepliedTurn': 'Turn {turn} · no reply for {duration}',
       'turn.repeat': '{label} ×{count}',
       'turn.progressHint': 'One progress entry every {duration} in Session review',
       'duration.seconds': '{s}s',
@@ -1334,6 +1324,47 @@ window.__ModuleLoader__.load({
     }
 
     /** 结束态的状态词；正常运行中的徽标只留状态点，不再给动作词。 */
+    /**
+     * 结束态的用时压成 mm:ss（超过一小时才带小时位）：`8:40`、`1:05:30`。
+     * 完整说法（第 2 轮 · 用时 8 分 40 秒）只留在 title / 无障碍标签里。
+     */
+    function compactDuration(ms) {
+      var total = Math.max(0, Math.round((Number(ms) || 0) / 1000))
+      var hours = Math.floor(total / 3600)
+      var minutes = Math.floor((total % 3600) / 60)
+      var seconds = total % 60
+      var pad = function (value) { return value < 10 ? '0' + value : String(value) }
+      if (hours > 0) return hours + ':' + pad(minutes) + ':' + pad(seconds)
+      return minutes + ':' + pad(seconds)
+    }
+
+    /** 结束态那一小簇：`#2 · ◷ 8:40`。轮次和用时都用小号，把宽度留给摘要。 */
+    function metaSegmentNode(segment) {
+      return h('span', {
+        key: 'meta',
+        className: 'wdxt-seg wdxt-meta',
+        title: segment.title,
+        'aria-label': segment.title,
+      }, [
+        h('span', { key: 'turn', className: 'wdxt-metaTurn' }, '#' + String(segment.turn)),
+        h('span', { key: 'dot', className: 'wdxt-sep' }, '·'),
+        h('svg', {
+          key: 'clock',
+          className: 'wdxt-metaIcon',
+          width: 12,
+          height: 12,
+          viewBox: '0 0 16 16',
+          fill: 'none',
+          'aria-hidden': 'true',
+          focusable: 'false',
+        }, [
+          h('circle', { key: 'dial', cx: 8, cy: 8, r: 5.7, stroke: 'currentColor', strokeWidth: 1.4 }),
+          h('path', { key: 'hand', d: 'M8 4.6v3.7l2.4 1.4', stroke: 'currentColor', strokeWidth: 1.4, strokeLinecap: 'round' }),
+        ]),
+        h('span', { key: 'took' }, segment.text),
+      ])
+    }
+
     function turnStatusLabel(status, t) {
       if (status === 'done') return tr(t, 'turn.status.done', '已完成')
       if (status === 'aborted') return tr(t, 'turn.status.aborted', '已取消')
@@ -1581,19 +1612,33 @@ window.__ModuleLoader__.load({
      * 异常态与结束态（无新输出 / 等你回答 / 待批准 / 出错 / 已完成…）。
      */
     function StatusChip(props) {
-      if (props.label === '') {
-        return h('span', { className: 'wdxt-status wdxt-statusBare', 'data-kind': props.kind, 'aria-hidden': 'true' }, [
-          h('span', { key: 'dot', className: 'wdxt-dot' }),
-        ])
+      // 状态一律用颜色的点区分：蓝=运行中、绿=完成、红=出错或拦截、橙=等你反馈
+      // 或卡住、灰=取消 / 中断。完成和运行中只留色点，状态词进 title 与无障碍
+      // 标签；异常态在点后面补一句原因（无新输出多久、待批准哪个工具、失败原因），
+      // 这些不是颜色能替代的。
+      var kind = props.kind
+      var dotClass = kind === 'running' ? 'wdxt-dot' : 'wdxt-dotStatic'
+      if (props.label === '' || kind === 'done') {
+        var named = props.label !== ''
+        return h('span', {
+          className: 'wdxt-status wdxt-statusBare',
+          'data-kind': kind,
+          title: named ? props.label : undefined,
+          'aria-label': named ? props.label : undefined,
+          'aria-hidden': named ? undefined : 'true',
+          role: named && props.live === true ? 'status' : undefined,
+          'aria-live': named && props.live === true ? 'polite' : undefined,
+        }, [h('span', { key: 'dot', className: dotClass })])
       }
-      var children = []
-      if (props.kind === 'stalled' || props.kind === 'waiting') {
-        children.push(h('span', { key: 'dot', className: 'wdxt-dotStatic' }))
-      } else if (props.kind === 'done') {
-        children.push(h('span', { key: 'check', className: 'wdxt-check', 'aria-hidden': 'true' }, '✓'))
-      }
-      children.push(h('span', { key: 'label', className: 'wdxt-statusLabel' }, props.label))
-      return h('span', { className: 'wdxt-status', 'data-kind': props.kind, role: props.live === true ? 'status' : undefined, 'aria-live': props.live === true ? 'polite' : undefined }, children)
+      return h('span', {
+        className: 'wdxt-status',
+        'data-kind': kind,
+        role: props.live === true ? 'status' : undefined,
+        'aria-live': props.live === true ? 'polite' : undefined,
+      }, [
+        h('span', { key: 'dot', className: dotClass }),
+        h('span', { key: 'label', className: 'wdxt-statusLabel' }, props.label),
+      ])
     }
 
     function turnStatusInfo(view, t, stalled) {
@@ -1671,30 +1716,33 @@ window.__ModuleLoader__.load({
 
     /**
      * 组装这一行的各个片段。每个片段只由自己的开关控制，互不牵连。
-     * @param {string} [goal] - 这一轮用户的要求，给「现在这行是在为谁干活」一个着落。
+     * @param {string} [noteText] - 运行中这一轮最新一条进度摘要的正文。
      * @returns {Array<{ key: string, text: string, className: string }>}
      */
-    function buildTurnSegments(view, settings, t, summary, jobs, goal) {
+    function buildTurnSegments(view, settings, t, summary, jobs, noteText) {
       var segments = []
       if (!view || view.turn === 0) return segments
       var progress = settings.progress === true
-      // 判定只看「多久没给用户正文回复」：一直跑工具、一直思考也算没回复。
-      var due = view.running && progress && typeof view.quietMs === 'number' && view.quietMs >= settings.stallMs
       if (progress) {
-        var text
         if (view.running) {
-          // 运行中不再报本轮耗时：正文区的过程行已经在算同一个秒数。这里只说
-          // 「多久没给你回复」——中途回复过也能独立计时，那才是这一行独有的信息。
-          var quiet = Math.max(0, Number(view.quietMs) || 0)
-          text = quiet > 0
-            ? trf(t, 'turn.unrepliedTurn', { turn: view.turn, duration: formatDuration(quiet, t) }, '第 ' + view.turn + ' 轮 · 未回复 ' + formatDuration(quiet, t))
-            : trf(t, 'turn.headline', { turn: view.turn }, '第 ' + view.turn + ' 轮')
+          // 运行中不再写「多久没给你回复」：正文区的过程行已经在算同一个秒数，
+          // 两行并排只差几秒，读起来是同一条信息说两遍。改成「会话回顾」里这一轮
+          // 最新一条进度摘要——过程行只说此刻，不会给出这段时间的整体进展。
+          if (typeof noteText === 'string' && noteText !== '') {
+            segments.push({ key: 'note', text: noteText, className: 'wdxt-note' })
+          }
         } else {
           // 结束态保留「用时」：完成的轮次页脚本来就不显示耗时，这不是重复。
+          // 但「第 2 轮 · 用时 8 分 40 秒」太长，压成 `#2 · ◷ 8:40`，宽度留给摘要。
           var duration = formatDuration(view.elapsedMs, t)
-          text = trf(t, 'turn.took', { turn: view.turn, duration: duration }, '第 ' + view.turn + ' 轮 · 用时 ' + duration)
+          segments.push({
+            key: 'meta',
+            turn: view.turn,
+            text: compactDuration(view.elapsedMs),
+            title: trf(t, 'turn.took', { turn: view.turn, duration: duration }, '第 ' + view.turn + ' 轮 · 用时 ' + duration),
+            className: 'wdxt-meta',
+          })
         }
-        segments.push({ key: 'progress', text: text, className: due ? 'wdxt-progress wdxt-progressStalled' : 'wdxt-progress' })
       }
       // 出错时「出错」两个字说明了状态，没说为什么；把原因挂上去。
       var failure = view.running ? '' : turnErrorText(view)
@@ -1713,11 +1761,6 @@ window.__ModuleLoader__.load({
           segments.push({ key: 'activity', text: activity, className: 'wdxt-activity' })
           activityShown = true
         }
-      }
-      // 这一轮的要求：长轮次、跨轮次的后台任务里，「第几轮」本身不说明在干什么。
-      if (typeof goal === 'string' && goal.trim() !== '') {
-        var goalText = clipText(goal, 40)
-        segments.push({ key: 'goal', text: trf(t, 'turn.goal', { goal: goalText }, '「' + goalText + '」'), className: 'wdxt-goal' })
       }
       if (settings.summary && summary && summary.text) {
         segments.push({ key: 'summary', text: '※ ' + summary.text, className: 'wdxt-summary' })
@@ -1866,6 +1909,54 @@ window.__ModuleLoader__.load({
       // 说「没有新输出」准确，后者只留给真正的空窗口（空窗口已经不发进度了）。
       if (digest && Number(digest.events) > 0) return tr(t, 'progress.activityOnly', '在推进，暂无新的说明')
       return tr(t, 'progress.noOutput', '这段时间没有新输出')
+    }
+
+    /**
+     * 运行中的这一行显示「会话回顾」里这一轮最新一条进度摘要的正文。
+     *
+     * 那条摘要是 Host 按时间窗用便宜模型写成的「在解决什么、推进到哪」，
+     * 和面板里看到的一字不差；本地从事件窗口拼出来的粗摘要会把思考碎片里的
+     * 代码片段（`(available == null ?`）带上屏，所以这一行只认已存下的摘要。
+     * 后台任务的进度挂在任务组里，不属于这一轮的进展，跳过。
+     */
+    /**
+     * 同一份回顾历史里这一轮的「回复」正文：面板「回复」那一栏用的就是它。
+     * 只有摘要记录（kind 不是 progress）才存 assistant / question；后台任务的
+     * 进度没有，跳过。摘要接口在「沿用上一轮文字」时可能带回上一轮的回复，
+     * 所以以历史里这一轮实际记下的那条为准。
+     */
+    function latestTurnReply(items, turn) {
+      var best = null
+      var list = Array.isArray(items) ? items : []
+      for (var index = 0; index < list.length; index += 1) {
+        var item = list[index]
+        if (!item || item.kind === 'progress') continue
+        if (typeof item.turn !== 'number' || item.turn !== turn) continue
+        var reply = typeof item.assistant === 'string' ? item.assistant.trim() : ''
+        var question = typeof item.question === 'string' ? item.question.trim() : ''
+        if (reply === '' && question === '') continue
+        if (best === null || (Number(item.at) || 0) > (Number(best.at) || 0)) best = item
+      }
+      if (best === null) return null
+      return {
+        reply: typeof best.assistant === 'string' ? best.assistant : '',
+        question: typeof best.question === 'string' ? best.question : '',
+      }
+    }
+
+    function latestProgressNote(items, turn) {
+      var best = null
+      var list = Array.isArray(items) ? items : []
+      for (var index = 0; index < list.length; index += 1) {
+        var item = list[index]
+        if (!item || item.kind !== 'progress') continue
+        if (typeof item.turn !== 'number' || item.turn !== turn) continue
+        if (typeof item.jobId === 'string' && item.jobId !== '') continue
+        if (typeof item.summary !== 'string' || item.summary === '') continue
+        if (best === null || (Number(item.at) || 0) > (Number(best.at) || 0)) best = item
+      }
+      if (best === null) return null
+      return { turn: turn, text: best.summary, at: best.at, generated: best.generated === true }
     }
 
     /** DSH 会把当前语言同步到 <html lang>；只区分中英文，和插件字典一致。 */
@@ -2255,7 +2346,6 @@ window.__ModuleLoader__.load({
     function TurnRecapDock(props) {
       var sessionId = props.sessionId
       var useSession = props.useSession
-      var useInput = props.useInput
       var useSettings = props.useSettings
       var readFeed = props.readFeed
       var readJobs = props.readJobs
@@ -2263,10 +2353,7 @@ window.__ModuleLoader__.load({
       var t = props.t
 
       var running = (useSession ? useSession(function (s) { return s && s.running }) : false) || false
-      var input = (useInput ? useInput(function (s) { return s }) : undefined) || {}
       var settings = useSettings ? useSettings(function (s) { return s }) : undefined
-      var draft = typeof input.draft === 'string' ? input.draft : ''
-      var attachments = Array.isArray(input.attachmentIds) ? input.attachmentIds.length : 0
       var cfg = lineSettings(settings)
 
       var [entries, setEntries] = useState([])
@@ -2281,9 +2368,12 @@ window.__ModuleLoader__.load({
       var lastJobProgressAt = useRef(0)
       var jobLineCache = useRef({})
       var [jobsSnapshot, setJobsSnapshot] = useState(null)
+      // 运行中这一行显示的进度摘要：直接取「会话回顾」里这一轮最新的一条。
+      var [progressNote, setProgressNote] = useState(null)
+      var [noteRevision, setNoteRevision] = useState(0)
+      var noteTicket = useRef(0)
       // 展开只按轮次记：换轮、换会话都回到单行，不把上一条的长文本留在下一轮。
       var [expandedTurn, setExpandedTurn] = useState(0)
-      var goalCache = useRef({ key: '', text: '' })
 
       // 切换会话时清掉上一会话的摘要、静默标记和请求去重键。
       useEffect(function () {
@@ -2298,8 +2388,10 @@ window.__ModuleLoader__.load({
         reportedJobs.current = {}
         lastJobProgressAt.current = 0
         jobLineCache.current = {}
-        goalCache.current = { key: '', text: '' }
         setJobsSnapshot(null)
+        setProgressNote(null)
+        setNoteRevision(0)
+        noteTicket.current = 0
       }, [sessionId])
 
       // 只订阅事件窗口，不写会话。窗口由 Session Controller 维护。
@@ -2452,6 +2544,26 @@ window.__ModuleLoader__.load({
       }, [due, view.turn])
       var stickyProgress = due || (view.running && waitedTurn === view.turn)
 
+      // 运行中的这一行直接显示「会话回顾」里的进度摘要：Host 按时间窗用便宜模型
+      // 写好一条，和面板里看到的一致。本地从事件窗口拼的粗摘要会把思考碎片里的
+      // 代码片段（`(available == null ?`）带上屏，所以只认已经存下来的正文。
+      // 记完新的一条后 noteRevision 会让这里重读，模型刚写完的那一条立刻上屏。
+      useEffect(function () {
+        if (!sessionId || !cfg.progress || !running) return undefined
+        var ticket = noteTicket.current + 1
+        noteTicket.current = ticket
+        var stopped = false
+        requestRecapHistory(sessionId).then(function (result) {
+          if (stopped || ticket !== noteTicket.current) return
+          // 读失败就沿用上一条，别把已经显示的进展抹掉。
+          if (!result || result.error === true) return
+          setProgressNote(latestProgressNote(result.items, view.turn))
+        }).catch(function () {
+          // 读不到就先留着上一条；面板会给读取失败的原因。
+        })
+        return function () { stopped = true }
+      }, [sessionId, cfg.progress, running, view.turn, noteRevision])
+
       // 超过一个间隔还没回复，就往「会话回顾」记一条进度；同一轮同一次等待同一档只发一次。
       // 只记「刚跨过去」的档位：切回会话、刷新、从休眠唤醒时，当前档位常常已经
       // 过了一大半，这时补记一条，下一条边界几十秒后就跟上，看起来像两条只隔 1 分钟。
@@ -2466,7 +2578,10 @@ window.__ModuleLoader__.load({
         // 之前会每 10 分钟写一条「这段时间没有新输出」，人不在这边时全是噪音。
         if (!snapshot || snapshot.events === 0) return
         reportedBuckets.current[plan.key] = true
-        requestProgress(sessionId, snapshot).catch(function () {
+        requestProgress(sessionId, snapshot).then(function () {
+          // 这一条已经写完（模型摘要也生成好了），重读一次让最新进展上屏。
+          setNoteRevision(function (value) { return value + 1 })
+        }).catch(function () {
           // 失败不重试；下一个间隔继续。
         })
       }, [progressBucket, sessionId, view.turn, view.lastReplyAt])
@@ -2522,9 +2637,29 @@ window.__ModuleLoader__.load({
           var text = formatRecap(recap, t)
           if (text === '') return
           // 上一轮的请求可能比新一轮晚回来；不要让旧摘要覆盖已经拿到的新摘要。
+          var base = {
+            text: text,
+            turn: view.turn,
+            reply: typeof recap.assistant === 'string' ? recap.assistant : '',
+            question: typeof recap.question === 'string' ? recap.question : '',
+          }
           setSummary(function (previous) {
             if (previous !== null && typeof previous.turn === 'number' && previous.turn > view.turn) return previous
-            return { text: text, turn: view.turn }
+            return base
+          })
+          // 面板的「回复」取的是历史里这一轮记下的那条；摘要接口沿用了上一轮
+          // 文字时，带回来的 assistant 可能属于上一轮。以历史为准，同一次复用。
+          requestRecapHistory(sessionId).then(function (result) {
+            if (activeSession.current !== sessionId) return
+            if (!result || result.error === true) return
+            var hit = latestTurnReply(result.items, view.turn)
+            if (hit === null) return
+            setSummary(function (previous) {
+              if (previous === null || previous.turn !== view.turn) return previous
+              return { text: previous.text, turn: previous.turn, reply: hit.reply, question: hit.question }
+            })
+          }).catch(function () {
+            // 读不到就沿用 recap 自带的那份；不打扰主任务。
           })
         }).catch(function () {
           // 摘要失败时静默：本地三种信息仍然可用，不打扰主任务。
@@ -2532,20 +2667,13 @@ window.__ModuleLoader__.load({
       }, [cfg.summary, sessionId, running, view.turn])
 
       if (!sessionId) return null
-      if (draft.trim() !== '' || attachments > 0) return null
 
       // 运行中先展示本地活动；语义摘要只在上一条轮次结束后出现，避免把旧摘要说成这一轮。
       var visibleSummary = summary !== null && summary.turn === view.turn && !running ? summary : null
       var hasLiveJobs = liveJobs.length > 0
-      // 这一轮的要求：按「会话 + 轮次」缓存，避免每秒重扫整个事件窗口；窗口里还没有
-      // 消息时（turn/start 先到、user/message 后到）继续重算，直到拿到为止。
-      // 键里带会话，切走再切回同一轮次时不会把上一个会话的要求留在这行上。
-      var goalKey = sessionId + ':' + view.turn
-      if (view.turn > 0 && (goalCache.current.key !== goalKey || goalCache.current.text === '')) {
-        goalCache.current = { key: goalKey, text: turnGoalOf(entries, view.turn) }
-      }
-      var goalText = goalCache.current.key === goalKey ? goalCache.current.text : ''
-      var segments = buildTurnSegments(view, cfg, t, visibleSummary, liveJobs, goalText)
+      // 跑久了还没回复时，这一行显示「会话回顾」里这一轮最新一条进度摘要。
+      var noteText = view.running && progressNote !== null && progressNote.turn === view.turn ? progressNote.text : ''
+      var segments = buildTurnSegments(view, cfg, t, visibleSummary, liveJobs, noteText)
       // 可见性可以「钉住」，状态永远用实时静默判断，避免恢复输出后还显示无新输出。
       var status = cfg.progress ? turnStatusInfo(view, t, stalled) : null
       var showRunning = (view.running && (cfg.activity || (cfg.progress && stickyProgress))) || hasLiveJobs
@@ -2562,32 +2690,41 @@ window.__ModuleLoader__.load({
 
       // 展开：长文本从单行里挪到下面的详情块，单行只留状态和短片段。
       // 同一段话在行里被截一次、在下面又完整出现一次，等于又说两遍。
-      // 单行默认不显示「这一轮的要求」：那是用户刚发的一段话，一行放不下，
-      // 又和进度、摘要抢宽度；只在展开后的详情块里出现。
-      var wideKeys = { goal: true, summary: true, jobs: true, activity: true }
+      // 「这一轮的要求」就是你刚发的那句话，展开后再抄一遍没有新信息，去掉；
+      // 换成同一份回顾里的「回复」——那一轮到底说了什么、现在是什么情况。
+      // note 可能是 Host 写的整段摘要（最长 500 字），单行只放得下截断版；
+      // 当成可展开片段，展开后完整读，和摘要/后台任务/动作一致。
+      var wideKeys = { note: true, summary: true, jobs: true, activity: true }
       var expanded = view.turn > 0 && expandedTurn === view.turn
       var detailSegments = expanded ? segments.filter(function (segment) { return wideKeys[segment.key] === true }) : []
       var inlineSegments = expanded
         ? segments.filter(function (segment) { return wideKeys[segment.key] !== true })
-        : segments.filter(function (segment) { return segment.key !== 'goal' })
+        : segments
 
       // 悬浮提示只描述真正显示出来的那一行；展开后长文本已经在下面的块里。
       var titleParts = status !== null && status.label !== '' ? [status.label] : []
       var fullTitle = titleParts.concat(inlineSegments.map(function (segment) { return segment.text })).join(RECAP_SEP)
       var detailLines = []
       if (expanded) {
-        if (goalText !== '') detailLines.push({ key: 'goal', label: tr(t, 'turn.detailGoal', '本轮要求'), text: goalText })
+        // 回复和摘要来自同一次 recap 请求：摘要是那一行「现在到哪」，
+        // 回复是它背后更完整的原话，不再单独取一次。
+        if (visibleSummary !== null && typeof visibleSummary.reply === 'string' && visibleSummary.reply !== '') {
+          detailLines.push({ key: 'reply', label: tr(t, 'panel.recapReply', '回复'), text: visibleSummary.reply })
+        } else if (visibleSummary !== null && typeof visibleSummary.question === 'string' && visibleSummary.question !== '') {
+          detailLines.push({ key: 'question', label: tr(t, 'panel.recapQuestion', '待回答'), text: visibleSummary.question })
+        }
         if (visibleSummary !== null && typeof visibleSummary.text === 'string' && visibleSummary.text !== '') {
           detailLines.push({ key: 'summary', label: tr(t, 'turn.detailSummary', '摘要'), text: visibleSummary.text })
         }
         for (var detailIndex = 0; detailIndex < detailSegments.length; detailIndex += 1) {
           var detail = detailSegments[detailIndex]
-          if (detail.key !== 'jobs' && detail.key !== 'activity') continue
-          detailLines.push({
-            key: detail.key,
-            label: detail.key === 'jobs' ? tr(t, 'turn.detailJobs', '后台任务') : tr(t, 'turn.detailActivity', '动作'),
-            text: detail.text,
-          })
+          if (detail.key !== 'note' && detail.key !== 'jobs' && detail.key !== 'activity') continue
+          var detailLabel = detail.key === 'jobs'
+            ? tr(t, 'turn.detailJobs', '后台任务')
+            : detail.key === 'note'
+              ? tr(t, 'panel.recapTagProgress', '进度')
+              : tr(t, 'turn.detailActivity', '动作')
+          detailLines.push({ key: detail.key, label: detailLabel, text: detail.text })
         }
       }
       // 有可以展开的长文本时才给按钮：没有要求、摘要、后台任务或流水时展开是空操作。
@@ -2600,10 +2737,14 @@ window.__ModuleLoader__.load({
       if (status !== null) children.push(h(StatusChip, { key: 'status', kind: status.kind, label: status.label, live: status.label !== '', t: t }))
       for (var index = 0; index < inlineSegments.length; index += 1) {
         if (index > 0) children.push(h('span', { key: 'sep' + index, className: 'wdxt-sep' }, '·'))
+        if (inlineSegments[index].key === 'meta') {
+          children.push(metaSegmentNode(inlineSegments[index]))
+          continue
+        }
         children.push(h('span', {
           key: inlineSegments[index].key,
           className: 'wdxt-seg ' + inlineSegments[index].className,
-          title: inlineSegments[index].key === 'progress' ? progressHint : undefined,
+          title: inlineSegments[index].key === 'note' ? inlineSegments[index].text : (inlineSegments[index].key === 'progress' ? progressHint : undefined),
         }, inlineSegments[index].text))
       }
       // 操作键固定在第一行最右侧：正文变短（展开后长文本挪走）时也不要往左跑，
@@ -2619,9 +2760,22 @@ window.__ModuleLoader__.load({
           'aria-expanded': expanded,
           'aria-controls': expanded ? detailId : undefined,
           onClick: function () { setExpandedTurn(expanded ? 0 : view.turn) },
-        }, expanded
-          ? tr(t, 'turn.collapseAction', '收起')
-          : tr(t, 'turn.expandAction', '展开')))
+        }, h('svg', {
+          key: 'chevron',
+          width: 14,
+          height: 14,
+          viewBox: '0 0 16 16',
+          fill: 'none',
+          'aria-hidden': 'true',
+          focusable: 'false',
+        }, h('path', {
+          key: 'path',
+          // 和「›」同一套 45° 箭头：转 90° 朝上 / 朝下，粗细和视觉尺寸一致。
+          d: expanded ? 'M3.4 10.2 8 5.8 12.6 10.2' : 'M3.4 5.8 8 10.2 12.6 5.8',
+          stroke: 'currentColor',
+          strokeWidth: 1.4,
+          strokeLinecap: 'round',
+        }))))
       }
       if (typeof openProgress === 'function') {
         actions.push(h('button', {
@@ -4635,6 +4789,7 @@ window.__ModuleLoader__.load({
     exports.RecapDock = TurnRecapDock
     exports.deriveTurnView = deriveTurnView
     exports.formatDuration = formatDuration
+    exports.compactDuration = compactDuration
     exports.lineSettings = lineSettings
     exports.groupRecapEntries = groupRecapEntries
     exports.recapGroupTime = recapGroupTime
@@ -4650,10 +4805,13 @@ window.__ModuleLoader__.load({
     exports.jobSegmentText = jobSegmentText
     exports.progressWindowOf = progressWindowOf
     exports.progressDueOf = progressDueOf
+    exports.latestProgressNote = latestProgressNote
+    exports.latestTurnReply = latestTurnReply
     exports.collectProgressDigest = collectProgressDigest
     exports.progressIntervalText = progressIntervalText
     exports.turnStatusInfo = turnStatusInfo
     exports.buildTurnSegments = buildTurnSegments
+    exports.StatusChip = StatusChip
     exports.activityText = activityText
     exports.describeToolCall = describeToolCall
     exports.ReliefPanel = ReliefPanel
