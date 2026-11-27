@@ -1399,6 +1399,11 @@ test('expanded line reuses the recap reply from history instead of the request',
     { kind: 'answered', turn: 4, at: at + 2000, summary: '新摘要', user: '这一轮的要求', assistant: '这一轮的回复原文' },
     { kind: 'answered', turn: 5, at: at + 3000, summary: '别的轮次', user: '别的要求', assistant: '不属于这一轮' },
   ]
+  // 运行中那行的文本 = 时间点 + 最新进度摘要；旧记录没有 at 时只给正文。
+  assert.equal(client.progressNoteText(null), '')
+  assert.equal(client.progressNoteText({ text: '没有时间点的旧记录' }), '没有时间点的旧记录')
+  assert.match(client.progressNoteText({ at: Date.now(), text: '刚写的进度' }), /^\d{1,2}:\d{2} 刚写的进度$/)
+
   const hit = client.latestTurnReply(items, 4)
   assert.equal(hit.reply, '这一轮的回复原文')
   assert.equal(hit.question, '')
@@ -1616,7 +1621,7 @@ test('turn line shows a long busy turn that has no reply, and hides once replied
     { type: 'event', event: { type: 'tool/result', seq: 3, time: now - 16 * 60000, data: { turn: 2, step: 1, message: { source: { callId: 'c1' } } } } },
     { type: 'event', event: { type: 'tool/call', seq: 4, time: now - 3 * 60000, data: { callId: 'c2', name: 'bash', arguments: '{"command":"job_output"}', turn: 2, step: 2 } } },
   ]
-  const note = { turn: 2, text: '批量数量输入正抽成共用组件，图床和分析卡在同步替换，前端检查待跟进。' }
+  const note = { turn: 2, at: Date.now(), text: '批量数量输入正抽成共用组件，图床和分析卡在同步替换，前端检查待跟进。' }
   const line = renderLine(busy, note)
   assert.ok(line !== null)
   const json = JSON.stringify(line)
@@ -1625,6 +1630,8 @@ test('turn line shows a long busy turn that has no reply, and hides once replied
   assert.match(json, /"label":"","live":false/)
   // 这一段就是「会话回顾」里最新一条进度，原样上屏；不再写和过程行重复的「第 2 轮 · 未回复 19 分」。
   assert.match(json, /wdxt-note/)
+  // 进度摘要前面带它被记下的时间点（当天只给时分）。
+  assert.match(json, /\d{1,2}:\d{2} 批量数量输入正抽成共用组件/)
   assert.match(json, /批量数量输入正抽成共用组件/)
   assert.doesNotMatch(json, /未回复|第 2 轮/)
   assert.doesNotMatch(json, /进行中|等待/)

@@ -1944,6 +1944,17 @@ window.__ModuleLoader__.load({
       }
     }
 
+    /**
+     * 运行中那一行要显示的文本：`11:27 批量数量输入正抽成共用组件…`。
+     * 时间点用和面板同一套 formatRecapTime（当天只给时分），让「这条进度是什么
+     * 时候写的」一眼可见；旧记录没有 at 时只给正文。
+     */
+    function progressNoteText(note) {
+      if (!note || typeof note.text !== 'string' || note.text === '') return ''
+      var time = typeof note.at === 'number' && note.at > 0 ? formatRecapTime(note.at) : ''
+      return time === '' ? note.text : time + ' ' + note.text
+    }
+
     function latestProgressNote(items, turn) {
       var best = null
       var list = Array.isArray(items) ? items : []
@@ -2672,7 +2683,7 @@ window.__ModuleLoader__.load({
       var visibleSummary = summary !== null && summary.turn === view.turn && !running ? summary : null
       var hasLiveJobs = liveJobs.length > 0
       // 跑久了还没回复时，这一行显示「会话回顾」里这一轮最新一条进度摘要。
-      var noteText = view.running && progressNote !== null && progressNote.turn === view.turn ? progressNote.text : ''
+      var noteText = view.running && progressNote !== null && progressNote.turn === view.turn ? progressNoteText(progressNote) : ''
       var segments = buildTurnSegments(view, cfg, t, visibleSummary, liveJobs, noteText)
       // 可见性可以「钉住」，状态永远用实时静默判断，避免恢复输出后还显示无新输出。
       var status = cfg.progress ? turnStatusInfo(view, t, stalled) : null
@@ -4806,6 +4817,7 @@ window.__ModuleLoader__.load({
     exports.progressWindowOf = progressWindowOf
     exports.progressDueOf = progressDueOf
     exports.latestProgressNote = latestProgressNote
+    exports.progressNoteText = progressNoteText
     exports.latestTurnReply = latestTurnReply
     exports.collectProgressDigest = collectProgressDigest
     exports.progressIntervalText = progressIntervalText
