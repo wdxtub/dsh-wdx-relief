@@ -203,7 +203,12 @@ window.__ModuleLoader__.load({
       '.wdxp-filter:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:1px}',
       '.wdxp-filterActive{color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-border-l2);background:var(--dsw-alias-bg-base)}',
       '.wdxp-filterCount{font-variant-numeric:tabular-nums;color:var(--dsw-alias-label-caption);font-size:10px}',
-      '.wdxh-kind{color:var(--dsw-alias-label-caption);background:var(--dsw-alias-bg-base);border-radius:4px;flex:none;margin-top:1.5px;padding:0 5px;font-size:10px;line-height:16px}',
+      '.wdxh-kind{color:var(--dsw-alias-label-caption);align-items:center;gap:5px;flex:none;margin-top:1.5px;font-size:10px;line-height:16px;display:inline-flex}',
+      '.wdxh-kindDot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}',
+      '.wdxh-kindDot[data-kind="progress"]{background:var(--dsw-alias-state-business-primary)}',
+      '.wdxh-kindDot[data-kind="summary"]{background:var(--dsw-alias-state-success-primary)}',
+      '.wdxh-kindDot[data-kind="local"]{background:var(--dsw-alias-state-warn-label)}',
+      '.wdxp-statusDot{width:6px;height:6px;border-radius:50%;background:currentColor;flex:none}',
       '.wdxp-groups{flex-direction:column;gap:6px;margin:0;padding:0;list-style:none;display:flex}',
       '.wdxp-group{border:.5px solid var(--dsw-alias-border-l1);border-radius:var(--dsw-radius-md);background:var(--dsw-alias-bg-module-platform);min-width:0;overflow:hidden}',
       '.wdxp-groupHead{box-sizing:border-box;width:100%;border:0;background:0 0;color:inherit;font:inherit;text-align:left;cursor:pointer;flex-wrap:wrap;align-items:center;gap:4px 6px;padding:7px 9px;display:flex}',
@@ -211,7 +216,7 @@ window.__ModuleLoader__.load({
       '.wdxp-groupHead:focus-visible{outline:var(--dsw-focus-ring-width) solid var(--dsw-focus-ring-color);outline-offset:-1px}',
       '.wdxp-groupTitle{color:var(--dsw-alias-label-primary);white-space:nowrap;text-overflow:ellipsis;flex:0 1 auto;min-width:0;font-size:12px;line-height:18px;font-weight:600;overflow:hidden}',
       '.wdxp-groupCount{color:var(--dsw-alias-label-tertiary);background:var(--dsw-alias-bg-base);border-radius:4px;flex:none;padding:0 5px;font-size:10px;line-height:16px;font-variant-numeric:tabular-nums}',
-      '.wdxp-groupPending{color:var(--dsw-alias-state-warn-label);background:var(--dsw-alias-bg-base);border-radius:4px;flex:none;padding:0 5px;font-size:10px;line-height:16px}',
+      '.wdxp-groupPending{color:var(--dsw-alias-state-warn-label);align-items:center;gap:4px;flex:none;font-size:10px;line-height:16px;display:inline-flex}',
       '.wdxp-groupTime{color:var(--dsw-alias-label-caption);white-space:nowrap;font-variant-numeric:tabular-nums;flex:none;margin-left:auto;font-size:10px;line-height:16px}',
       '.wdxp-groupCaret{color:var(--dsw-alias-label-caption);flex:none;font-size:10px;line-height:1}',
       '.wdxp-groupBody{border-top:.5px solid var(--dsw-alias-border-l3);padding:4px 6px 6px}',
@@ -3425,11 +3430,19 @@ window.__ModuleLoader__.load({
             'aria-expanded': open,
             onClick: function () { setOpenKey(open ? null : key) },
           }, [
-            h('span', { key: 'kind', className: 'wdxh-kind' }, isProgress
-              ? tr(t, 'panel.recapTagProgress', '进度')
-              : (item.degraded === true
-                  ? tr(t, 'panel.recapTagLocal', '本地摘要')
-                  : tr(t, 'panel.recapTagSummary', '摘要'))),
+            h('span', { key: 'kind', className: 'wdxh-kind' }, [
+              h('span', {
+                key: 'dot',
+                className: 'wdxh-kindDot',
+                'data-kind': isProgress ? 'progress' : (item.degraded === true ? 'local' : 'summary'),
+                'aria-hidden': 'true',
+              }),
+              h('span', { key: 'label' }, isProgress
+                ? tr(t, 'panel.recapTagProgress', '进度')
+                : (item.degraded === true
+                    ? tr(t, 'panel.recapTagLocal', '本地摘要')
+                    : tr(t, 'panel.recapTagSummary', '摘要'))),
+            ]),
             h('span', { key: 'text', className: 'wdxp-rowText' }, item.summary),
             h('span', { key: 'meta', className: 'wdxp-rowMetaCol' }, [
               h('span', { key: 'time', className: 'wdxp-rowMeta' }, formatRecapTime(item.at)),
@@ -3475,7 +3488,10 @@ window.__ModuleLoader__.load({
                   key: 'pending',
                   className: 'wdxp-groupPending',
                   title: tr(t, 'panel.recapPendingHint', '这一轮结束时留下了问题或下一步'),
-                }, tr(t, 'panel.recapPending', '待跟进'))
+                }, [
+                  h('span', { key: 'dot', className: 'wdxp-statusDot', 'aria-hidden': 'true' }),
+                  h('span', { key: 'label' }, tr(t, 'panel.recapPending', '待跟进')),
+                ])
               : null,
             time !== '' ? h('span', { key: 'time', className: 'wdxp-groupTime' }, time) : null,
             h('span', { key: 'caret', className: 'wdxp-groupCaret', 'aria-hidden': 'true' }, expanded ? '▾' : '▸'),

@@ -2070,6 +2070,15 @@ test('recap history marks the latest turn as waiting for a reply', () => {
   assert.match(waitingJson, /wdxp-groupPending/)
   assert.match(waitingJson, /待跟进/)
   assert.match(waitingJson, /要继续吗？/)
+  // 和输入框那行同一套状态色点：进度=蓝、摘要=绿、待跟进=橙（色点 + 文字，不只靠颜色）。
+  assert.match(waitingJson, /wdxp-statusDot/)
+  assert.match(waitingJson, /wdxh-kindDot/)
+  assert.match(waitingJson, /"data-kind":"progress"/)
+  assert.match(waitingJson, /"data-kind":"summary"/)
+  assert.match(code, /\.wdxh-kindDot\[data-kind="progress"\]\{background:var\(--dsw-alias-state-business-primary\)\}/)
+  assert.match(code, /\.wdxh-kindDot\[data-kind="summary"\]\{background:var\(--dsw-alias-state-success-primary\)\}/)
+  assert.match(code, /\.wdxh-kindDot\[data-kind="local"\]\{background:var\(--dsw-alias-state-warn-label\)\}/)
+  assert.match(code, /\.wdxp-groupPending\{color:var\(--dsw-alias-state-warn-label\)/)
 
   calls = 0
   const running = client.RecapHistorySection({ sessionId: 's1', t: (key) => key, running: true, currentTurn: 1 })
